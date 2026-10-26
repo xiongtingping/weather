@@ -569,6 +569,24 @@ def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
         "likelihood_by_bucket": receipt.get("likelihood_by_bucket") or {},
         "excluded": _excluded(L.get("hard_excluded_buckets")),
         "root_stage": L.get("prediction_root_stage"),
+        "tx_shift": _tx_shift_brief(L),
+    }
+
+
+def _tx_shift_brief(L: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Charter 282: the TX-revision move's receipt without its vectors; None while idle."""
+
+    receipt = _json(L.get("tx_revision_shift_json"), {})
+    if receipt.get("state") not in {"SERVED", "SHADOW"}:
+        return None
+    rev = receipt.get("revision") or {}
+    fit = receipt.get("fit") or {}
+    return {
+        "state": receipt.get("state"), "reason": receipt.get("reason"),
+        "delta_c": _float(receipt.get("delta_c")), "step_c": _float(rev.get("step_c")),
+        "tx_c": _float(rev.get("tx_c")), "previous_tx_c": _float(rev.get("previous_tx_c")),
+        "hours_since_issue": _float(rev.get("hours_since_issue")),
+        "kappa": _float(fit.get("kappa")), "verdict": fit.get("verdict"),
     }
 
 

@@ -22503,7 +22503,12 @@ function sdStageMove(e, stage){
     ? (e.tx_c == null ? "这份 TAF 没有 TX，似然恒等" : `TAF TX ${sdN(e.tx_c, 0)}°C · 比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`)
     : `实况最高 ${sdN(e.running_high_c, 1)}°C`;
   const nx = (e.excluded || []).length;
-  const exLine = nx ? ` · 含实况下界排除 ${nx} 档` : "";
+  // Charter 282: a TX revision inside its window -- served, or the shadow's move.
+  const tx = stage === "P1" ? e.tx_shift : null;
+  const txLine = !tx ? "" : tx.state === "SERVED"
+    ? ` · 含 TX 修订挪 ${sdSg(tx.delta_c, 2)}°C（TX ${sdN(tx.previous_tx_c, 0)}→${sdN(tx.tx_c, 0)}°C）`
+    : ` · TX 修订影子 ${sdSg(tx.delta_c, 2)}°C 未用`;
+  const exLine = (nx ? ` · 含实况下界排除 ${nx} 档` : "") + txLine;
   const tip = stage === "P0-M"
     ? "P0-M＝根 P0（分布回归的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。"
     : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。`;

@@ -14,7 +14,7 @@ import threading
 import time
 from collections import OrderedDict
 from datetime import datetime
-from typing import Any, Collection, Mapping, Sequence
+from typing import Any, Callable, Collection, Mapping, Sequence
 
 from .atomic_ledger import ledger_span, note_ledger_span
 from .contracts import (
@@ -38,6 +38,7 @@ from .p1_observation_likelihood import (
     silent_receipt as observation_silent_receipt,
 )
 from .settlement_time import settlement_day_window
+from . import tx_revision_shift as _tx_revision_shift
 from .observed_floor_censoring import (
     OBSERVED_FLOOR_CENSORING_LINEAGE_KEY,
     OBSERVED_FLOOR_CENSORING_RECEIPT_SCHEMA,
@@ -790,6 +791,8 @@ def _posterior(
     anchor_geometry: Mapping[str, Mapping[str, Any]] | None = None,
     floor_censoring: bool = False,
     prior_probabilities: Mapping[str, float] | None = None,
+    post_shift: Callable[[dict[str, float]], tuple[dict[str, float], Mapping[str, Any]]] | None = None,
+    post_shift_lineage_key: str | None = None,
 ) -> ProbabilityEnvelope:
     """One Bayesian update of a calibrated root: prior x likelihood x mask.
 
@@ -810,6 +813,10 @@ def _posterior(
     ``prior_probabilities`` replaces the predecessor's vector as the prior
     (same buckets), for P1 rooting on that proportional shape; identity,
     ordinals and lineage still bind the predecessor itself.
+    ``post_shift`` (charter 282, P1 only): the one declared exception to
+    "stop after the multiplication" -- the TX-revision translation, applied to
+    the bound posterior before the floor; its receipt lands under
+    ``post_shift_lineage_key``.
     """
 
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
@@ -881,6 +888,11 @@ def _posterior(
     if censoring_receipt is not None:
         lineage[OBSERVED_FLOOR_CENSORING_LINEAGE_KEY] = json.dumps(
             censoring_receipt, sort_keys=True
+        )
+    if post_shift is not None:
+        probabilities, shift_receipt = post_shift(probabilities)
+        lineage[str(post_shift_lineage_key)] = json.dumps(
+            shift_receipt, sort_keys=True
         )
     # Last of all: no likelihood may manufacture an absolute zero.  A zero
     # claim is a structural statement -- the settlement rules make the bucket
@@ -1419,7 +1431,9 @@ def materialize_p1(
     # v46 (charter 281 补记一): alpha and the direct update refitted on the
     # regression's roots.
     # v47 (charter 281 补记二): the root again (P0-M v37).
-    posterior_version: str = "p1_joint_likelihood_v47",
+    # v48 (charter 282, 2026-10-26): the TX-revision narrow-window shift --
+    # receipt on every step, the vector moved only while its fit passes 240.
+    posterior_version: str = "p1_joint_likelihood_v48",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild
@@ -1433,6 +1447,10 @@ def materialize_p1(
     # that the closing observation may be the same report the head already
     # closed on, which is the declared exception to consume-once.
     state_refresh_of_checkpoint_id: str | None = None,
+    # Charter 282: the step's TX-revision inputs (``tx_revision_shift.
+    # step_bundle``), handed in so a replay rebuilds the envelope.  None (every
+    # packet before v48) leaves the vector and the lineage as they were.
+    tx_revision_shift: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1820,10 +1838,21 @@ def materialize_p1(
         or "NONE"
     )
     values["event_consumed_once"] = "full_prefix_content_addressed"
+    post_shift = None
+    if tx_revision_shift is not None:
+        def post_shift(probabilities: dict[str, float]):
+            return _tx_revision_shift.apply(
+                probabilities,
+                bucket_ordinals=root.bucket_ordinals,
+                intervals_json=root.lineage.get("bucket_intervals_c_json"),
+                bundle=tx_revision_shift,
+            )
     return _posterior(
         root,
         lineage=values,
         stage="P1",
+        post_shift=post_shift,
+        post_shift_lineage_key=_tx_revision_shift.LINEAGE_KEY,
         likelihoods=likelihoods,
         prior_probabilities=root_probabilities,
         hard_excluded_buckets=proof.hard_excluded_buckets,

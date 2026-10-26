@@ -611,6 +611,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 281 补记二: root bump at the instant P0-M v37 declares (the
         # P0-M root without the TAF line), alpha refitted on those roots.
         "p1_joint_likelihood_v47": "2026-10-25T08:30:00Z",
+        # Charter 282: the TX-revision narrow-window shift's receipt on every
+        # step (the vector moved only while its fit passes 240).  Declared
+        # past the push and the restart.
+        "p1_joint_likelihood_v48": "2026-10-26T04:00:00Z",
     },
 }
 

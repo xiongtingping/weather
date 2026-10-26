@@ -307,7 +307,7 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     # Charter 241 moved P0-M on to v23 (its own change).
     assert p0m == "p0m_taf_likelihood_v37"
     # Charter 200 moved P1 on to v20 (its own change).
-    assert p1 == "p1_joint_likelihood_v47"
+    assert p1 == "p1_joint_likelihood_v48"
     start = SA.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v8"
     )
@@ -330,7 +330,9 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     assert SA.version_effective_from("P0-M", p0m) > latest
     assert SA.version_effective_from("P1", "p1_joint_likelihood_v41") < latest
     assert SA.version_effective_from("P1", "p1_joint_likelihood_v46") == latest
-    assert SA.version_effective_from("P1", p1) == SA.version_effective_from("P0-M", p0m)
+    assert SA.version_effective_from("P1", "p1_joint_likelihood_v47") == SA.version_effective_from("P0-M", p0m)
+    # Charter 282 moved P1 on to v48 (its own change).
+    assert SA.version_effective_from("P1", p1) > SA.version_effective_from("P0-M", p0m)
     v20 = SA.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v20")
     v21 = SA.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v21")
     assert SA.version_effective_from("P0-M", "p0m_taf_likelihood_v22") == v20

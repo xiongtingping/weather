@@ -16,6 +16,7 @@ from .contracts import (
     content_sha256,
 )
 from .materialization import materialize_p1
+from . import tx_revision_shift
 from .p1_observation_likelihood import feature_vector
 from .regional_features import regional_features_at
 from .metar_four_layer import (
@@ -524,6 +525,12 @@ def compile_station_p1_packets(
     # refresh fails every cycle looks exactly like one with nothing to
     # refresh.
     state_refresh_refusals_out: list[str] | None = None,
+    # Charter 282: the event day's TX bulletins received by the compile
+    # (``tx_revision_shift.load_bulletins``) and the daily fit's summary
+    # (``fit_summary``), read once by the caller.  None compiles without the
+    # layer: no bundle on the packet, nothing in the lineage.
+    tx_bulletins: Sequence[Mapping[str, Any]] | None = None,
+    tx_revision_fit: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Compile every canonical P1 prefix; emit on running-high advances,
     and close with one state refresh on the current clock.
@@ -1095,6 +1102,17 @@ def compile_station_p1_packets(
                     ),
                     "artifact": observation_likelihood_artifact,
                 }
+            tx_revision_bundle = (
+                None
+                if tx_bulletins is None
+                else tx_revision_shift.step_bundle(
+                    tx_bulletins,
+                    decision_at_utc=decision_text,
+                    event_date=str(root.event_date),
+                    settlement_timezone=str(root.settlement_timezone),
+                    fit=tx_revision_fit,
+                )
+            )
             envelope = materialize_p1(
                 previous,
                 prediction_root=root,
@@ -1117,6 +1135,7 @@ def compile_station_p1_packets(
                     truth_revision_sha_by_observation.get(observation_id) or None
                 ),
                 observation_likelihood=observation_likelihood,
+                tx_revision_shift=tx_revision_bundle,
             )
             packets.append({
                 "observation_id": observation_id,
@@ -1138,6 +1157,7 @@ def compile_station_p1_packets(
                 "bucket_upper_bounds_c": bucket_upper_bounds_c,
                 "reported_high_advanced": high_advanced,
                 "observation_likelihood": observation_likelihood,
+                "tx_revision_shift": tx_revision_bundle,
                 "state_refresh_of_checkpoint_id": (
                     previous.checkpoint_id if is_state_refresh else ""
                 ),
@@ -1385,6 +1405,7 @@ def materialization_packet(
             "reported_high_advanced"
         ),
         "observation_likelihood": packet.get("observation_likelihood"),
+        "tx_revision_shift": packet.get("tx_revision_shift"),
         # Projected explicitly.  This dict is the whole input to the strict
         # materializer, so anything omitted here is silently absent from the
         # rebuilt envelope -- and without this key the envelope compiles but

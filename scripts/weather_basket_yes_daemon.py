@@ -615,6 +615,15 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         86400.0,
         1800.0,
     ),
+    # Charter 282: the P1 TX-revision shift -- kappa and the walk-forward
+    # verdict that is serving's precondition.  SSOT ``mode=ro``, one JSON
+    # artifact the P1 compile reads, about a minute.
+    (
+        "fit_tx_revision_shift",
+        "scripts/fit_tx_revision_shift_sweep.sh",
+        86400.0,
+        1800.0,
+    ),
     # Charter 197 (2026-09-22): the supply watch.  2026-09-21 16:04Z the proxy
     # tunnel stopped carrying traffic, every upstream failed together, and by
     # 19:42Z no D+1 P0 was fresh anywhere -- until 08:55Z the next morning,
@@ -704,6 +713,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "fit_deterministic_feature_gate": "none",
     # Charter 281: SSOT ``mode=ro``, one JSON artifact.
     "fit_p0_ngr": "none",
+    # Charter 282: SSOT ``mode=ro``, one JSON artifact.
+    "fit_tx_revision_shift": "none",
     # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
     "supply_watch": "none",
     # Charter 199: SSOT ``mode=ro``; writes data/fusion_blend_training.db

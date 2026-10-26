@@ -152,6 +152,7 @@ CHARTER_281B_START = sa.version_effective_from(
 )
 # Charter 281 补记二 (charter 151's ruling revoked): P0-M v37 and P1 v47 only.
 CHARTER_281C_START = sa.version_effective_from("P0-M", "p0m_taf_likelihood_v37")
+CHARTER_282_START = "2026-10-26T04:00:00Z"
 
 
 def _served(version: str) -> sqlite3.Connection:
@@ -482,8 +483,10 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # (charter 200) is P1's own change, declared past its push and restart.
     # v21 (charter 204) and v22 (charter 210) are the seventh and eighth
     # root bumps, at P0 v10's and P0 v11's moments.
-    assert p1 == "p1_joint_likelihood_v47"
-    assert sa.version_effective_from("P1", p1) == CHARTER_281C_START
+    assert p1 == "p1_joint_likelihood_v48"
+    assert sa.version_effective_from("P1", p1) == CHARTER_282_START
+    assert CHARTER_282_START > CHARTER_281C_START
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v47") == CHARTER_281C_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v46") == CHARTER_281B_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v43") == CHARTER_275_START
     assert CHARTER_279_START > CHARTER_275_START

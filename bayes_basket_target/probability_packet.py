@@ -41,6 +41,8 @@ ALLOWED_KEYS = {
     # observation likelihood.  They ride on the packet so a rebuilt envelope
     # is the envelope the compiler committed.
     "observation_likelihood",
+    # P1 only (charter 282): the step's TX-revision inputs, for the same reason.
+    "tx_revision_shift",
     "decision_at_utc", "fresh_until_utc",
     "bridge_sha256", "checkpoint_id", "posterior_version",
     "created_at_utc",
@@ -328,6 +330,7 @@ def build_probability_envelope(
                 or None
             ),
             observation_likelihood=packet.get("observation_likelihood"),
+            tx_revision_shift=packet.get("tx_revision_shift"),
             **common,
         )
     raise ContractError("probability_materialization_stage_invalid")

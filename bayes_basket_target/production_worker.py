@@ -119,6 +119,11 @@ from .probability_bridge import materialize_probability_bridge
 from .p1_observation_likelihood import (
     load_artifact as load_p1_observation_likelihood_artifact,
 )
+from .tx_revision_shift import (
+    fit_summary as tx_revision_fit_summary,
+    load_bulletins as load_tx_bulletins,
+    load_fit_artifact as load_tx_revision_fit,
+)
 from .taf_likelihood import load_artifact as load_taf_likelihood_artifact
 from .regional_point_debias import (
     load_artifact as load_regional_point_debias_artifact,
@@ -16829,6 +16834,17 @@ class TargetProductionWorker:
                     report_context=self._p1_report_context(
                         str(predecessor.station_id), str(predecessor.event_date),
                         str(predecessor.settlement_timezone),
+                    ),
+                    # Charter 282: the day's TX bulletins received by now and
+                    # the daily fit; each step reads its own as-of revision.
+                    tx_bulletins=load_tx_bulletins(
+                        self.commit_conn if self.commit_conn is not None else self.conn,
+                        station_id=str(predecessor.station_id),
+                        event_date=str(predecessor.event_date),
+                        as_of_utc=as_of_utc,
+                    ),
+                    tx_revision_fit=tx_revision_fit_summary(
+                        load_tx_revision_fit()
                     ),
                     maturity_bin=maturity_bin,
                 )
