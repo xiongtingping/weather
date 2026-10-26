@@ -23063,7 +23063,20 @@ function sdWrf(day){
   if(prev && (prev.series || []).length) lines.push({pts: prev.series, stroke: "var(--muted)", dash: !!sat, width: sat ? 1 : 2, label: "3 日预报"});
   if(ctl && (ctl.series || []).length) lines.push({pts: ctl.series, stroke: SD_COL.WRF, dash: true, label: "模型自估云"});
   if(sat && (sat.series || []).length) lines.push({pts: sat.series, stroke: SD_COL.WRF, width: 2, label: "用卫星实测云"});
-  const trend = lines.length ? `<div class="sd-d0-trend">${sdTimeTempChart(lines, null, null, {day: day.event_date, ...sdAxisOpts(day)})}</div>` : "";
+  // Every issue's maximum on the clock it came out (user 2026-10-26 「做成曲线」): early, the
+  // frozen 11:10 one and the half-hour re-runs, beside the airport's maximum so far and the
+  // market then, and the truth once in.
+  const ISSUE_KIND = {early: "早版", frozen: "冻结版", update: "重跑"};
+  const issues = [W.nowcast_first, ...(W.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_obs_c != null)
+    .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
+  const issueLines = !issues.length ? [] : [
+    {pts: issues.map(r => [r.ready_utc, r.sat_obs_c]), stroke: SD_COL.WRF, width: 2, label: "WRF 各版",
+     marks: issues.map(r => [r.ready_utc, r.sat_obs_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${day.event_date}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · ${sdN(r.sat_obs_c, 2)}°C`])},
+    {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: SD_COL.METAR, dash: true, label: "已报最高"},
+    {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: SD_COL.MKT, width: 1, label: "市场均值"},
+    ...(W.truth_c == null ? [] : [{pts: [[issues[0].ready_utc, W.truth_c], [issues[issues.length - 1].ready_utc, W.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
+  const issueTrend = issues.length > 1 ? `<div class="sd-d0-trend"><div class="sd-sub">WRF 各版最高温 · 按出数时间</div>${sdTimeTempChart(issueLines, null, null, sdAxisOpts(day))}</div>` : "";
+  const trend = (lines.length ? `<div class="sd-d0-trend">${sdTimeTempChart(lines, null, null, {day: day.event_date, ...sdAxisOpts(day)})}</div>` : "") + issueTrend;
   const cell = (name, v, tip) => `<div class="sd-det" title="${sdEsc(tip)}"><div class="sd-det-h"><span>${name}</span></div><b>${sdN(v, 1)}</b></div>`;
   const body = `<div class="sd-det-grid">${[
     sat ? cell("卫星实测云", NC ? NC.sat_obs_c : sat.tmax_c, `WRF 算最高温时用卫星实际拍到的云（截至 ${satAt || "—"}，之后沿用）`) : "",
