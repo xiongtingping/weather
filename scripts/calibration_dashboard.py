@@ -18692,7 +18692,31 @@ function wrfTmaxPanel(){
     const newest = issues[issues.length - 1];
     const issueRow = issues.length < 2 ? "" : `<div class="trend-t" style="margin-top:8px" title="早版（约 10:00、10:30）、冻结版（11:10 起跑）、之后每半小时一张新云图重跑一次；每个点＝那一版报的今天最高温（已与当时报文最高取大），横轴＝出数时间；悬停看是哪一版、用哪张云图">今天 WRF 各版最高温 · 按出数时间（${issues.length} 版，最新 ${h(loc(newest.ready_utc))} ${n(newest.sat_obs_c)}°C）</div>
       <div class="card">${sdTimeTempChart(issueLines, null, null, {h: 180})}</div>`;
-    return top + aheadRow + ncRow + issueRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable;
+    // Core only (user 2026-10-26 「信息还是太多，分散注意力，提炼核心信息即可」): today's issues on the
+    // clock; who is nearest at the 11:30 moment (mean error, days won); the coming days; the last
+    // seven days.  Everything else -- the big cards, the same-moment row, the configuration
+    // tiles, the charts, the full table and the hindcasts -- sits in one fold.
+    const RANK = COLS.filter(c => c[0] !== "fcst"), judged = tdays.filter(d => S.days[d].truth_c != null);
+    const wins = c => judged.filter(d => { const E = S.days[d], e = errOf(E, c);
+      return e != null && Math.abs(e) === Math.min(...RANK.map(k => errOf(E, k)).filter(x => x != null).map(Math.abs)); }).length;
+    const ranked = RANK.map(c => [c, meanErr(c), wins(c)]).filter(x => x[1]).sort((a, b) => a[1][0] - b[1][0]);
+    const rankStrip = !ranked.length ? "" : `<div class="trend-t" style="margin-top:10px" title="同一时刻（11:30 出数）各家报的最高温对实测；10-01 起没有实盘出数的日子用严格回放（只用 11:10 前数据）">谁更准 · 11:30 时刻的平均误差</div>
+      <div class="grid g4">${ranked.map(([c, m, w], i) => `<div class="card" style="border-top:3px solid ${c[2]}"><div class="muted">${i === 0 ? "🏆 " : ""}${h(c[1])}</div>
+        <div class="mono" style="font-size:28px;font-weight:700;line-height:1.2">${n(m[0], 2)}°</div><div class="muted">${m[1]} 天 · 当天最准 ${w} 次</div></div>`).join("")}</div>`;
+    const aheadMini = !ahead.length ? "" : `<div class="trend-t" style="margin-top:10px">未来几天 · WRF 3 日预报</div><div style="display:flex;flex-wrap:wrap;gap:8px">${ahead.map(d => { const r = S.days[d].configs.fcst;
+      return `<div class="card" style="padding:8px 14px" title="${h(String(r.init_utc || "").slice(5, 13).replace("T", " "))}Z 起报"><span class="muted">${h(d.slice(5))} 周${wk(d)}</span> <b class="mono" style="font-size:20px;margin-left:6px">${n(r.tmax_c)}°</b></div>`; }).join("")}</div>`;
+    const recent = judged.slice(0, 7);
+    const recentTable = !recent.length ? "" : `<div class="trend-t" style="margin-top:10px">最近 ${recent.length} 天 · 实测与各家（粗框＝当天最准）</div>
+      <div class="card" style="overflow-x:auto"><table style="width:100%"><thead><tr><th>日期</th><th>实测</th>${RANK.map(c => `<th style="text-align:right;color:${c[2]}">${h(c[1])}</th>`).join("")}</tr></thead><tbody>${recent.map(d => { const E = S.days[d];
+        const errs = RANK.map(c => errOf(E, c)), best = Math.min(...errs.filter(x => x != null).map(Math.abs));
+        return `<tr><td class="mono">${h(d.slice(5))}</td><td class="mono" style="font-weight:700">${n(E.truth_c, 0)}</td>${RANK.map((c, i) => { const e = errs[i];
+          if(e == null) return "<td></td>";
+          const top = Math.abs(e) === best;
+          return `<td class="mono" style="text-align:right;color:${Math.abs(e) < 0.5 ? "var(--good,#3fb950)" : Math.abs(e) >= 1.5 ? "var(--bad,#f85149)" : "inherit"}${top ? ";font-weight:700;box-shadow:inset 0 0 0 1.5px " + c[2] + ";border-radius:6px" : ""}" title="${h(`报 ${n(c[3](E))}°C · 误差 ${sg(e)}${c[4](E) ? " · 严格回放" : ""}`)}">${n(c[3](E))}</td>`; }).join("")}</tr>`; }).join("")}</tbody></table>
+      <div class="muted" style="font-size:11.5px;margin-top:4px">绿＝差不到 0.5°，红＝差 1.5° 以上；悬停看误差</div></div>`;
+    return issueRow + rankStrip + aheadMini + recentTable
+      + `<details style="margin-top:10px"><summary class="muted">更多：今天各家明细、各配置误差、逐日图表与全表、回算</summary>`
+      + top + aheadRow + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable + `</details>`;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
 }
 
