@@ -18714,9 +18714,10 @@ function wrfTmaxPanel(){
           const top = Math.abs(e) === best;
           return `<td class="mono" style="text-align:right;color:${Math.abs(e) < 0.5 ? "var(--good,#3fb950)" : Math.abs(e) >= 1.5 ? "var(--bad,#f85149)" : "inherit"}${top ? ";font-weight:700;box-shadow:inset 0 0 0 1.5px " + c[2] + ";border-radius:6px" : ""}" title="${h(`报 ${n(c[3](E))}°C · 误差 ${sg(e)}${c[4](E) ? " · 严格回放" : ""}`)}">${n(c[3](E))}</td>`; }).join("")}</tr>`; }).join("")}</tbody></table>
       <div class="muted" style="font-size:11.5px;margin-top:4px">绿＝差不到 0.5°，红＝差 1.5° 以上；悬停看误差</div></div>`;
-    return issueRow + rankStrip + aheadMini + recentTable
-      + `<details style="margin-top:10px"><summary class="muted">更多：今天各家明细、各配置误差、逐日图表与全表、回算</summary>`
-      + top + aheadRow + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable + `</details>`;
+    // The two charts stay open (user 2026-10-26 「逐日最高温（°C）和…逐小时气温…不要隐藏」).
+    return issueRow + rankStrip + aheadMini + recentTable + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>`
+      + `<details style="margin-top:10px"><summary class="muted">更多：今天各家明细、各配置误差、逐日全表、回算</summary>`
+      + top + aheadRow + ncRow + tiles + table + restTable + `</details>`;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
 }
 
