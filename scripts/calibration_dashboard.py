@@ -15945,9 +15945,9 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-cons-b{font-size:17px;font-weight:600;color:var(--text)}
 .sd-cons-p{font-size:11.5px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
 .sd-cons-wf{font-size:12.5px;color:var(--muted);margin-top:6px;padding-top:5px;border-top:1px dashed var(--line)}
-.sd-cmv{display:flex;align-items:center;gap:10px;margin-top:4px;font-variant-numeric:tabular-nums}
-.sd-cmv-s{display:flex;align-items:baseline;gap:5px}.sd-cmv-s span{font-size:11.5px;color:var(--muted)}.sd-cmv-s b{font-size:16px}.sd-cmv-s i{font-style:normal;font-size:12px;color:var(--muted)}
-.sd-cmv-a{color:var(--muted)}
+.sd-cmv{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;margin-top:6px;font-variant-numeric:tabular-nums}
+.sd-cmv-s{display:flex;flex-direction:column;gap:1px;min-width:0}.sd-cmv-s span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sd-cmv-s b{font-size:20px;line-height:1.2;white-space:nowrap}.sd-cmv-s i{font-style:normal;font-size:12px;color:var(--muted);white-space:nowrap}
+.sd-cmv-a{color:var(--muted);font-size:18px}
 .sd-cmv-t{margin-top:6px;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.sd-cmv-t th,.sd-cmv-t td{padding:1px 10px 1px 0;text-align:right}.sd-cmv-t th:first-child,.sd-cmv-t td:first-child{text-align:left}.sd-cmv-t th{color:var(--muted);font-weight:500}
 .sd-up{color:var(--accent)}.sd-dn{color:var(--pill-red-fg)}
 .sd-cons-sh{margin:4px 0 8px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -22397,7 +22397,7 @@ function sdStageMove(e, stage){
 function sdMoveBox(title, delta, S, labels, math, tip, wf){
   const pre = S.pre || {}, post = S.post || {};
   const head = `<div class="sd-cons-r" title="${sdEsc(tip)}"><span>${title}</span><span class="sd-cons-v">${sdSg(delta, 2)}°C</span></div>`;
-  const side = (lab, x) => `<div class="sd-cmv-s"><span>${lab}</span><b>${sdN(x.mean_c, 2)}°C</b><i>${sdEsc(x.mode || "—")} ${x.mode_p == null ? "" : sdPc(x.mode_p, 0)}</i></div>`;
+  const side = (lab, x) => `<div class="sd-cmv-s"><span>${lab}</span><b>${sdN(x.mean_c, 2)}°C</b><i>众数 ${sdEsc(x.mode || "—")} ${x.mode_p == null ? "" : sdPc(x.mode_p, 0)}</i></div>`;
   const move = `<div class="sd-cmv">${side(labels[0], pre)}<span class="sd-cmv-a">→</span>${side(labels[1], post)}</div>`;
   const mathLine = `<div class="sd-cons-p" title="${sdEsc(tip)}">${math}</div>`;
   const rows = (S.buckets || []).map(b => {
