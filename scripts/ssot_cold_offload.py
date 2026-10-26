@@ -110,7 +110,12 @@ from bayes_basket_target.offloaded_paths import (  # noqa: E402
     cold_tier_root,
     cold_tier_status,
 )
-from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES, install_wal_yield  # noqa: E402
+from bayes_basket_target.resource_bounds import (  # noqa: E402
+    MAX_TARGET_DB_BYTES,
+    READER_YIELD_WAL_BYTES,
+    install_wal_yield,
+    wait_for_wal_under,
+)
 from bayes_basket_target.valuation_store import WINDOW_DAYS as VALUATION_WINDOW_DAYS  # noqa: E402
 from bayes_basket_target.board_readings import SEAT_LOOKBACK_DAYS as BOARD_SEAT_LOOKBACK_DAYS  # noqa: E402
 
@@ -2339,6 +2344,10 @@ def _append_manifest(path: Path, row: Mapping[str, Any]) -> None:
         os.fsync(handle.fileno())
 
 
+#: Longest a run waits for the resident to truncate the WAL before a read.
+WAL_SETTLE_MAX_SECONDS = 180.0
+
+
 @dataclass
 class MoveBudget:
     deadline: float | None
@@ -2348,6 +2357,11 @@ class MoveBudget:
 
     def expired(self) -> bool:
         return self.deadline is not None and time.monotonic() >= self.deadline
+
+    def seconds_left(self, cap: float) -> float:
+        if self.deadline is None:
+            return cap
+        return max(0.0, min(cap, self.deadline - time.monotonic()))
 
 
 def move_table(
@@ -2706,15 +2720,33 @@ def run(
         # batch re-reads and re-verifies its rows before deleting, so a plan
         # made an hour before its move is as safe as one made just before.
         plans: list[TablePlan] = []
+
+        def wal_settled() -> None:
+            # A read started into a WAL still past the line is interrupted at
+            # once: 10-25/26 one yield made every later table of the run
+            # "plan_error:interrupted" within the same second, and the SSOT
+            # went into its last GiB with nothing planned.
+            wait_for_wal_under(ssot_path, READER_YIELD_WAL_BYTES, budget.seconds_left(WAL_SETTLE_MAX_SECONDS))
+
         for policy in selected:
-            try:
-                plan = plan_table(read, policy, as_of=moment, holds=holds,
-                                  estimate_sample=estimate_sample,
-                                  row_days_cache=row_days_cache)
-            except sqlite3.Error as exc:
-                # A table that cannot be planned is left alone; the others go on.
-                plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
-                                 refused=[f"plan_error:{type(exc).__name__}:{str(exc)[:200]}"])
+            plan = None
+            for attempt in range(2):
+                wal_settled()
+                try:
+                    plan = plan_table(read, policy, as_of=moment, holds=holds,
+                                      estimate_sample=estimate_sample,
+                                      row_days_cache=row_days_cache)
+                    break
+                except sqlite3.OperationalError as exc:
+                    if attempt == 0 and "interrupted" in str(exc):
+                        continue
+                    plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
+                                     refused=[f"plan_error:{type(exc).__name__}:{str(exc)[:200]}"])
+                except sqlite3.Error as exc:
+                    # A table that cannot be planned is left alone; the others go on.
+                    plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
+                                     refused=[f"plan_error:{type(exc).__name__}:{str(exc)[:200]}"])
+                    break
             receipt["tables"].append(plan.summary())
             if apply and plan.state == "planned":
                 plans.append(plan)
@@ -2727,6 +2759,7 @@ def run(
                 moves.append({"table": policy.table, "state": "not_started_budget" if not stopped
                               else "not_started_after_stop"})
                 continue
+            wal_settled()
             try:
                 outcome = move_table(
                     ssot_path=ssot_path, read=read, delete=delete, plan=plan, cold_root=root,
