@@ -1,0 +1,177 @@
+{
+ "covered_rows": 40956,
+ "pairs": {
+  "F-B": {
+   "all": {
+    "delta": 0.00057,
+    "ci": [
+     -0.00053,
+     0.00166
+    ],
+    "n_days": 17,
+    "n": 25763,
+    "days_better": 4
+   },
+   "hours_08_15": {
+    "delta": 0.00167,
+    "ci": [
+     -0.00043,
+     0.00377
+    ],
+    "n_days": 16,
+    "n": 8077,
+    "days_better": 5
+   },
+   "first_half": {
+    "delta": 0.00034,
+    "ci": [
+     -0.00016,
+     0.00085
+    ],
+    "n_days": 8,
+    "n": 13020,
+    "days_better": 2
+   },
+   "second_half": {
+    "delta": 0.00081,
+    "ci": [
+     -0.00152,
+     0.00282
+    ],
+    "n_days": 9,
+    "n": 12743,
+    "days_better": 2
+   },
+   "verdict": "INSUFFICIENT"
+  },
+  "F_cloud-B": {
+   "all": {
+    "delta": 0.0,
+    "ci": [
+     -4e-05,
+     5e-05
+    ],
+    "n_days": 17,
+    "n": 25763,
+    "days_better": 9
+   },
+   "hours_08_15": {
+    "delta": 4e-05,
+    "ci": [
+     -9e-05,
+     0.00017
+    ],
+    "n_days": 16,
+    "n": 8077,
+    "days_better": 8
+   },
+   "first_half": {
+    "delta": -1e-05,
+    "ci": [
+     -6e-05,
+     3e-05
+    ],
+    "n_days": 8,
+    "n": 13020,
+    "days_better": 4
+   },
+   "second_half": {
+    "delta": 2e-05,
+    "ci": [
+     -6e-05,
+     0.0001
+    ],
+    "n_days": 9,
+    "n": 12743,
+    "days_better": 5
+   },
+   "verdict": "INSUFFICIENT"
+  },
+  "F_precip-B": {
+   "all": {
+    "delta": 0.00063,
+    "ci": [
+     -0.00049,
+     0.00167
+    ],
+    "n_days": 17,
+    "n": 25763,
+    "days_better": 4
+   },
+   "hours_08_15": {
+    "delta": 0.00184,
+    "ci": [
+     -0.00018,
+     0.00385
+    ],
+    "n_days": 16,
+    "n": 8077,
+    "days_better": 6
+   },
+   "first_half": {
+    "delta": 0.00048,
+    "ci": [
+     -8e-05,
+     0.00105
+    ],
+    "n_days": 8,
+    "n": 13020,
+    "days_better": 3
+   },
+   "second_half": {
+    "delta": 0.00078,
+    "ci": [
+     -0.00157,
+     0.0027
+    ],
+    "n_days": 9,
+    "n": 12743,
+    "days_better": 1
+   },
+   "verdict": "INSUFFICIENT"
+  },
+  "F_wind-B": {
+   "all": {
+    "delta": -6e-05,
+    "ci": [
+     -0.00017,
+     4e-05
+    ],
+    "n_days": 17,
+    "n": 25763,
+    "days_better": 10
+   },
+   "hours_08_15": {
+    "delta": -0.00021,
+    "ci": [
+     -0.00055,
+     0.00012
+    ],
+    "n_days": 16,
+    "n": 8077,
+    "days_better": 11
+   },
+   "first_half": {
+    "delta": -0.00012,
+    "ci": [
+     -0.0003,
+     3e-05
+    ],
+    "n_days": 8,
+    "n": 13020,
+    "days_better": 6
+   },
+   "second_half": {
+    "delta": 1e-05,
+    "ci": [
+     -0.00011,
+     0.00014
+    ],
+    "n_days": 9,
+    "n": 12743,
+    "days_better": 4
+   },
+   "verdict": "INSUFFICIENT"
+  }
+ }
+}
