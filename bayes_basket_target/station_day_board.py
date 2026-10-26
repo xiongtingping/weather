@@ -1322,6 +1322,11 @@ def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> di
             "series": [{"hour": p["hour"], "total_c": p["total_c"], "resid_sd_c": p["resid_sd_c"],
                         "parts_c": p["parts_c"]} for p in series],
             "projection": _composite_projection(by_hour, station, fit, hours, now["hour"]),
+            # The same what-if as made at each earlier hour, on what was known then
+            # (user 2026-10-26 「曲线增加虚线和实线对比（虚线是推导，实线是实际走势）」).
+            "past_projections": {str(p["hour"]): _composite_projection(_as_of(by_hour, p["hour"]), station, fit,
+                                                                        hours, p["hour"])["points"]
+                                 for p in series[:-1]},
             "forecast_tmax_d1_c": round(max(tmax_d1), 1) if len(tmax_d1) == len(rows) and tmax_d1 else None,
             "verdict": fit.get("verdict"), "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc"),
             "version": fit.get("version") or str(fit.get("fitted_at_utc") or "").replace(":", "").replace("-", ""),
@@ -1368,6 +1373,20 @@ def _composite_trend(by_hour: Mapping[int, Mapping[str, Any]], from_hour: int) -
         if window == "last3":
             d = d[:3]
         out[key] = (sum(d) / len(d)) if d else None
+    return out
+
+
+def _as_of(by_hour: Mapping[int, Mapping[str, Any]], hour: int) -> dict[int, dict[str, Any]]:
+    """The hours as they stood at ``hour``: every later hour keeps its day-ahead
+    forecast and loses its report and its satellite reading, so a projection
+    made from them reads nothing that arrived after it."""
+
+    out: dict[int, dict[str, Any]] = {}
+    for h, r in by_hour.items():
+        if h <= hour:
+            out[h] = r
+        else:
+            out[h] = {k: v for k, v in r.items() if k not in {"obs", "sat_sw_wm2"}}
     return out
 
 

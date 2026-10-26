@@ -15782,7 +15782,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-plot .sd-cx-chart .sd-cx-ext{font-size:11.5px;font-weight:600;fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px}
 .sd-cx-plot .sd-cx-chart .sd-cx-projlab{font-size:11px;fill:var(--muted);paint-order:stroke;stroke:var(--card);stroke-width:3px}
 .sd-cx-chart .sd-cx-proj{cursor:help}
-.sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
+.sd-cx-pastlab{font-size:10px;fill:var(--muted)}.sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
 .sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}.sd-cx-detail:empty{display:none}
 .sd-cx-detail b.sd-warm{color:var(--pill-red-fg)}.sd-cx-detail b.sd-cold{color:var(--accent)}
 .sd-cx-dparts{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px}
@@ -22857,6 +22857,9 @@ if(typeof window !== "undefined" && !window.__sdCxClick){
     plot.querySelectorAll(".sd-cx-pt.on").forEach(x => x.classList.remove("on"));
     if(was){ box.classList.add("muted"); box.textContent = "点曲线上的点，看那一小时的明细"; return; }
     g.classList.add("on"); box.classList.remove("muted"); box.innerHTML = g.getAttribute("data-cx-detail");
+    // The clicked hour's own what-if, if one was made from it.
+    const own = plot.querySelector(`.sd-cx-past[data-cx-anchor="${g.getAttribute("data-cx-hour")}"]`);
+    if(own) plot.querySelectorAll(".sd-cx-past").forEach(x => { x.style.display = x === own ? "" : "none"; });
   });
 }
 if(typeof window !== "undefined" && !window.__sdTTHover){ window.__sdTTHover = true; document.addEventListener("mousemove", sdTTHover, {passive: true}); }
@@ -24587,7 +24590,7 @@ function sdSky(day){
   const CX_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水", rmax: "已观测最高温"};
   // ΔT through the day on a time axis (user 2026-10-21 「做成带时间轴的趋势图」):
   // each point as the card read it at that hour, the band ±1 residual SD.
-  const sdCompositeChart = (series, projection) => {
+  const sdCompositeChart = (series, projection, past) => {
     if(!series || !series.length) return "";
     // The dashed line (user 2026-10-21 「按照目前的实况趋势」「你用最佳的」): the hours
     // after the newest reading if today's report-vs-forecast difference carries on
@@ -24600,7 +24603,12 @@ function sdSky(day){
     const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = proj.length || Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
     // Headroom of 1 °C past the farthest point, so the 最高/最低 labels above/below it stay
     // inside the plot instead of being pressed onto the axis (user 2026-10-22 「显示有问题」).
-    const lim = Math.max(1.5, ...series.concat(proj).map(p => Math.abs(p.total_c) + 1.0));
+    // The what-if as made at each earlier hour (user 2026-10-26 「曲线增加虚线和实线对比
+    // （虚线是推导，实线是实际走势）」): dashed from its own hour, over the solid line
+    // the later readings actually drew.
+    const pastBy = Object.fromEntries(Object.entries(past || {}).map(([h, pts]) =>
+      [+h, (pts || []).filter(p => p.total_c != null && isFinite(p.total_c))]).filter(([, pts]) => pts.length));
+    const lim = Math.max(1.5, ...series.concat(proj, ...Object.values(pastBy)).map(p => Math.abs(p.total_c) + 1.0));
     const top = Math.ceil(lim * 2) / 2;
     const X = h => x0 + (h - h0) / (h1 - h0) * (x1 - x0);
     const Y = v => y0 + (top - Math.max(-top, Math.min(top, v))) / (2 * top) * (y1 - y0);
@@ -24629,7 +24637,7 @@ function sdSky(day){
         + ` · ΔT ${sdSg(p.total_c, 2)}°C · 个日上下约 ±${sdN(p.resid_sd_c, 1)}°C`
         + `<div class="sd-cx-dparts">${rows}${Math.abs(bias) >= 0.01 ? `<span class="${sdWarmCls(bias)}">站点偏差 ${sdSg(bias, 2)}</span>` : ""}</div>`;
     };
-    const dots = series.map((p, i) => `<g class="sd-cx-pt" data-cx-detail="${sdEsc(detail(p))}"><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="9" fill="transparent"/><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 4.6 : 3.4}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"/><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}；点击看明细`)}</title></g>`).join("");
+    const dots = series.map((p, i) => `<g class="sd-cx-pt" data-cx-hour="${p.hour}" data-cx-detail="${sdEsc(detail(p))}"><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="9" fill="transparent"/><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 4.6 : 3.4}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"/><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}；点击看明细`)}</title></g>`).join("");
     const last = series[series.length - 1];
     const projTip = p => `${hh(p.hour)}:00 外推：ΔT ${sdSg(p.total_c, 1)}°C${fcTmax == null ? "" : `（→ ${sdN(fcTmax + p.total_c, 1)}°C）`}${parts(p) ? "；" + parts(p) : ""}。假设今天实况相对日前预报的偏差延续并按历史速度回落（日照约 3 小时、气温湿度约 6 小时），未验证`;
     const fcTmax = CX && CX.forecast_tmax_d1_c;
@@ -24663,12 +24671,31 @@ function sdSky(day){
     // 「推算最高/最低」: the highest and lowest estimate made so far, at the hour it was
     // made -- not the hour the temperature peaked.
     const extremes = series.length > 1 && hiP.total_c !== loP.total_c ? mark(hiP, "推算最高", true) + mark(loP, "推算最低", false) : "";
+    // One past what-if shown at a time: the morning's by default, the clicked
+    // point's hour after a click.  Each says where it ended up
+    // against what was actually estimated at its last overlapping hour.
+    const byHour = Object.fromEntries(series.map(p => [p.hour, p]));
+    const anchors = Object.keys(pastBy).map(Number).sort((a, b) => a - b);
+    // Default: the morning's what-if (at or before local noon, three hours behind the
+    // newest reading at most) -- the one the afternoon's actual run says most about.
+    const pick = anchors.filter(h => h <= Math.min(12, last.hour - 3)).pop() ?? anchors[0];
+    const pastLines = anchors.map(h => {
+      const start = byHour[h], pts = pastBy[h];
+      if(!start) return "";
+      const both = pts.filter(p => byHour[p.hour]);
+      const end = both[both.length - 1];
+      const gap = end ? end.total_c - byHour[end.hour].total_c : null;
+      const pl = `<polyline points="${[start].concat(pts).map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="5 3"/>`;
+      const ends = pts.map(p => `<circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="2.2" fill="var(--card)" stroke="var(--accent)" stroke-width="1"><title>${sdEsc(`${hh(h)}:00 时外推的 ${hh(p.hour)}:00：ΔT ${sdSg(p.total_c, 1)}°C${byHour[p.hour] ? `；实际推算 ${sdSg(byHour[p.hour].total_c, 1)}°C` : ""}`)}</title></circle>`).join("");
+      const lab = `<text class="sd-cx-pastlab" x="${x0 + 4}" y="${y0 + 10}">实线＝实际推算 · <tspan fill="var(--accent)">虚线＝${hh(h)}:00 时的外推</tspan>${gap == null ? "" : ` · 到 ${hh(end.hour)}:00 外推比实际 ${sdSg(gap, 1)}°C`}</text>`;
+      return `<g class="sd-cx-past" data-cx-anchor="${h}"${h === pick ? "" : ` style="display:none"`}>${pl}${ends}${lab}</g>`;
+    }).join("");
     return `<svg class="sd-cx-chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="合成 ΔT 逐小时">
       <polygon points="${band}" fill="var(--muted)" opacity=".13"/>
       <line x1="${x0}" x2="${x1}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width=".8"/>
       <line x1="${x0}" x2="${x1}" y1="${y1}" y2="${y1}" stroke="var(--line)"/>
       <g class="sd-cx-ax">${ticksX}${ticksY}<text x="${x1}" y="${y1 + 28}" text-anchor="end">横轴＝做这次推算的钟点（时）</text></g>
-      ${line}${dashed}${extremes}${dots}
+      ${line}${dashed}${pastLines}${extremes}${dots}
       <text class="sd-cx-last" x="${Math.min(X(last.hour) + 5, x1 - 2)}" y="${Y(last.total_c) - 6}" text-anchor="${last.hour >= 16 ? "end" : "start"}">${sdSg(last.total_c, 1)}</text>
     </svg>`;
   };
@@ -24715,7 +24742,7 @@ function sdSky(day){
           })()}
           ${cxForward}
         </div>
-        <div class="sd-cx-plot">${sdCompositeChart(CX.series, CX.projection)}<div class="sd-cx-detail muted"></div></div>
+        <div class="sd-cx-plot">${sdCompositeChart(CX.series, CX.projection, CX.past_projections)}<div class="sd-cx-detail muted"></div></div>
       </div>`
     : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"
     ? `<div class="sd-pnl-c sd-cx-total"><div class="sd-cx-head"><span><em>${sdIcon("temp")}观测更新型 MOS</em><small>${hh(CX.hour)} 点</small></span><b class="muted">未到</b><small class="muted">${CX.state === "waiting_satellite" ? "卫星日照还没到齐" : "日前预报日照不全"}</small></div></div>`

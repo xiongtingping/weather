@@ -938,3 +938,18 @@ def test_both_mos_cards_show_the_mode_side_boxes() -> None:
     assert "function sdMosSide(X)" in dash
     assert "body: sdMosSide(X) +" in dash and "+ sdMosSide(CX)" in dash
     assert "<small>真值在市场众数哪侧</small>" in dash and "MOS 方向变化" in dash
+
+
+def test_a_past_projection_reads_only_what_was_known_at_its_hour() -> None:
+    """User 2026-10-26 「曲线增加虚线和实线对比」: the dashed what-if drawn from an
+    earlier hour must not see the reports and satellite readings that came later."""
+
+    from bayes_basket_target.station_day_board import _as_of
+
+    rows = {h: {"hour": h, "obs": {"temp_c": 20.0 + h}, "sat_sw_wm2": 100.0 * h,
+                "forecast": {"temp_c_d1": 20.0}} for h in range(6, 16)}
+    past = _as_of(rows, 10)
+    assert past[10]["obs"]["temp_c"] == 30.0 and past[10]["sat_sw_wm2"] == 1000.0
+    for h in range(11, 16):
+        assert "obs" not in past[h] and "sat_sw_wm2" not in past[h]
+        assert past[h]["forecast"] == {"temp_c_d1": 20.0}
