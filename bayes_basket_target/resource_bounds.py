@@ -387,7 +387,12 @@ MAX_JSON_NODES = 500_000
 # writer stopped; moving the deterministic-physics table (~44 MB, charter 267
 # 补记八) out of the SSOT did not hold past one cycle at ~425 MB/day of growth.
 # Returns to 70 GiB once the cleanup frees the room.
-MAX_TARGET_DB_BYTES = 73728 * MIB
+# Raised 72 -> 74 GiB on 2026-10-26, a bridge on the user's ruling
+# (「桥接72→74+查口径」): in use 70.99/72 GiB, ~2.5 GiB/day in against ~1.3
+# moved cold (OOS evaluations 0.57, envelopes 0.42, preselection 0.41,
+# training facts 0.38); the cold offload had refused every table since one
+# WAL yield interrupted its plan.  Back to 72 GiB once the inflow is cut.
+MAX_TARGET_DB_BYTES = 75776 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
