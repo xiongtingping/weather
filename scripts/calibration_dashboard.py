@@ -18714,8 +18714,16 @@ function wrfTmaxPanel(){
           const top = Math.abs(e) === best;
           return `<td class="mono" style="text-align:right;color:${Math.abs(e) < 0.5 ? "var(--good,#3fb950)" : Math.abs(e) >= 1.5 ? "var(--bad,#f85149)" : "inherit"}${top ? ";font-weight:700;box-shadow:inset 0 0 0 1.5px " + c[2] + ";border-radius:6px" : ""}" title="${h(`报 ${n(c[3](E))}°C · 误差 ${sg(e)}${c[4](E) ? " · 严格回放" : ""}`)}">${n(c[3](E))}</td>`; }).join("")}</tr>`; }).join("")}</tbody></table>
       <div class="muted" style="font-size:11.5px;margin-top:4px">绿＝差不到 0.5°，红＝差 1.5° 以上；悬停看误差</div></div>`;
+    // Today as number cards (user 2026-10-26 「今日的还是要数字卡片」): the newest WRF issue, the
+    // market and the airport's maximum as of that issue, and the truth once the day is in.
+    const frozenIssue = issues.find(r => (r.kind || "frozen") === "frozen");
+    const todayCards = !newest ? "" : `<div class="grid g4" style="margin-top:4px">
+      ${big(`今天 ${h(last.slice(5))} · WRF 最新`, `${n(newest.sat_obs_c)}°C`, "", `${h(loc(newest.ready_utc))} 出数 · 共 ${issues.length} 版${frozenIssue && frozenIssue !== newest ? ` · 11:30 版 ${n(frozenIssue.sat_obs_c)}°` : ""}`, "用卫星实测云的 WRF，已与当时机场已报最高取大")}
+      ${big("市场", newest.market_mean_c == null ? "—" : `${n(newest.market_mean_c)}°C`, "", `同一时刻 · ${h(loc(newest.ready_utc))}`, "WRF 最新一版出数那一刻的盘口均值")}
+      ${big("机场已报最高", newest.metar_max_so_far_c == null ? "—" : `${n(newest.metar_max_so_far_c, 0)}°C`, "", `截至 ${h(loc(newest.ready_utc))}`)}
+      ${big("实测最高温", L.truth_c == null ? "未结束" : `${n(L.truth_c, 0)}°C`, "", L.truth_c == null ? "当地日结束后落库" : `WRF 最新 ${sg(newest.sat_obs_c - L.truth_c)}°`)}</div>`;
     // The two charts stay open (user 2026-10-26 「逐日最高温（°C）和…逐小时气温…不要隐藏」).
-    return issueRow + rankStrip + aheadMini + recentTable + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>`
+    return todayCards + issueRow + rankStrip + aheadMini + recentTable + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>`
       + `<details style="margin-top:10px"><summary class="muted">更多：今天各家明细、各配置误差、逐日全表、回算</summary>`
       + top + aheadRow + ncRow + tiles + table + restTable + `</details>`;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
