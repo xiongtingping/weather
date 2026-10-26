@@ -15983,9 +15983,16 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-four .sd-det-f span:first-child{flex:0 0 2.6em;text-align:right;font-size:10px;white-space:nowrap}
 .sd-four .sd-det-pick{font-size:11px}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
-.sd-six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four.sd-five{grid-template-columns:repeat(5,minmax(0,1fr))}
+.sd-four.sd-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sd-rel-h{font-weight:600;margin:14px 0 0;font-size:13px}.sd-rel-h small{font-weight:400;color:var(--muted);margin-left:8px}
+.sd-chain{display:grid;grid-template-columns:minmax(0,.9fr) 44px minmax(0,1fr) 44px minmax(0,1fr);gap:0;margin:8px 0 12px;align-items:stretch}
+.sd-chain.sd-chain-2{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}
+.sd-chain>.sd-chain-in{grid-template-columns:minmax(0,1fr);margin:0}
+.sd-chain-a{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:2px}
+.sd-chain-a span{font-size:22px;line-height:1}.sd-chain-a small{font-size:10.5px;white-space:nowrap}
+@media (max-width:900px){.sd-chain,.sd-chain.sd-chain-2{grid-template-columns:minmax(0,1fr)}.sd-chain-a{flex-direction:row;padding:4px 0}.sd-chain-a span{transform:rotate(90deg)}}
 .sd-hit-wrap{margin:4px 0 12px}.sd-hit-h{font-weight:600;margin:0 0 6px}.sd-hit-h small{font-weight:400;color:var(--muted);margin-left:6px}
 .sd-hit-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:8px}
 @media (max-width:1300px){.sd-hit-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
@@ -16005,10 +16012,7 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 @media (max-width:1300px){.sd-four.sd-five{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:900px){.sd-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.sd-four{grid-template-columns:minmax(0,1fr)}}
-.sd-six>.sd-mc{margin:0;position:relative;display:flex;flex-direction:column}.sd-six>.sd-mc .sd-mc-foot{margin-top:auto;padding-top:6px}
-.sd-six .sd-prob-tx{top:12px}
-@media (max-width:1100px){.sd-six{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:640px){.sd-six{grid-template-columns:minmax(0,1fr)}}
+.sd-chain>.sd-mc{margin:0;position:relative;display:flex;flex-direction:column}.sd-chain>.sd-mc .sd-mc-foot{margin-top:auto;padding-top:6px}
 .sd-thin{opacity:.45}.sd-thin-tag{font-size:10.5px;padding:0 4px;border:1px solid var(--line);border-radius:4px;color:var(--muted)}
 .sd-cmp{margin:0 0 10px;padding:12px}.sd-cmp svg{width:100%;height:auto}
 .sd-cmp-scroll{overflow-x:auto;overscroll-behavior-x:contain}.sd-cmp-scroll svg.sd-tt-scroll{width:auto;max-width:none;height:auto;display:block}
@@ -22286,8 +22290,7 @@ function sdDay(day){
       <span class="muted sd-sub">${[
       day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : "",
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
-    <div class="sd-six">${sdProbabilityCards(day)}</div>
-    <div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>
+    ${sdChain(day)}
     ${sdHitStrip(day)}${sdFirstChart()}
     ${sdCompareChart(day)}${sdConvergence(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
@@ -22302,7 +22305,7 @@ function sdDay(day){
   </div>`;
 }
 
-function sdProbabilityCards(day){
+function sdProbabilityCards(day, split){
   const descriptions = {"P0":"天气模型", "P1":"正式观测更新"};
   const mk = ((day.market || {}).stats || {}).mean_c;
   // Against the previous served decision of the same stage.
@@ -22316,7 +22319,7 @@ function sdProbabilityCards(day){
   // 「重新优化6个卡片的排版」): name, the stage's centre big with its mode bucket,
   // the move since its last decision and the gap to the market, one line of the
   // distribution, the day's trend, then the last five decisions.
-  return ["P0", "P1"].map(stage => {
+  const cards = ["P0", "P1"].map(stage => {
     const e = (day.stages || {})[stage], st = (e || {}).stats || {};
     const title = `${stage} 概率`;
     if(!e) return sdModelCard({title, tag: descriptions[stage], color: SD_COL[stage], empty: "等待该阶段的概率信封"});
@@ -22339,7 +22342,9 @@ function sdProbabilityCards(day){
       sub: [`<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
             stage !== "P0" ? `<span title="本阶段实际引用的前序信封（服务向量）的分布均值，更新前的输入">${rootLabel} <b>${sdN((e.stage_move || {}).pre ? e.stage_move.pre.mean_c : null, 2)}°C</b></span>` : ""].filter(Boolean).join(" · "),
       trend: sdStageTrend(day, stage), body: (stage === "P0" ? sdNgrBlock(e.ngr) : sdStageMove(e, stage)) + sdRecentRuns(day, stage)});
-  }).join("");
+  });
+  if(split) return {P0: cards[0], P1: cards[1]};
+  return cards.join("");
 }
 // Charter 281 (user 2026-10-25 「按 N2 形态重建 P0」): the P0 card's box is the
 // regression's move against the older layers' vector (the fallback) -- before
@@ -23179,7 +23184,22 @@ function sdDetMedian(day){
   });
   return out;
 }
-function sdDeterministic(day){
+// The cards as the relationships they stand in (user 2026-10-26 「把卡片改为逻辑清晰的
+// 关系」): the production chain the lanes read -- the deterministic forecasts
+// feed P0's regression, P0 is P1's root -- with what each step adds on its
+// arrow; then the read-only estimates beside it, each set against P1.
+function sdChain(day){
+  const arrow = (word, tip) => `<div class="sd-chain-a" title="${sdEsc(tip)}"><span>→</span><small>${word}</small></div>`;
+  const det = sdDeterministic(day, true);
+  const p = sdProbabilityCards(day, true);
+  const side = [sdMemberBayes(day), sdD0(day), sdMos(day), sdWrf(day)].filter(Boolean);
+  return `<div class="sd-rel-h">生产链 <small>车道读的概率：P1 有就读 P1，没有读 P0</small></div>
+    <div class="sd-chain${det ? "" : " sd-chain-2"}">${det ? `<div class="sd-four sd-chain-in">${det}</div>${arrow("回归输入", "十家确定性逐家去偏后的中位数 F，与各家集合一起进 P0 的分布回归（宪章 281）")}` : ""}${p.P0 || ""}${arrow("× 实况", "P1＝P0 × 实况报文似然，再施已报最高的下界（宪章 150/283）")}${p.P1 || ""}</div>
+    ${side.length ? `<div class="sd-rel-h">旁证 <small>只读，不进生产；都与 P1、市场比</small></div>
+    <div class="sd-four${side.length === 4 ? "" : " sd-three"}">${side.join("")}</div>` : ""}`;
+}
+
+function sdDeterministic(day, chain){
   const T = day.deterministic || {}, rows = T.systems || [], F = T.f;
   if(!rows.length && !F) return "";
   const run = t => t ? String(t).slice(11, 13) + "Z" : "—";
@@ -23202,6 +23222,17 @@ function sdDeterministic(day){
   if(!F || F.f_c == null) return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, value: "F 暂无", trend, body});
   const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
   const p0 = ((day.stages || {})["P0"] || {}).model_center_c;
+  // In the chain the headline is what flows into P0: the regression's F (ten
+  // products, each debiased); the listing-time F of charter 267 is an
+  // execution-layer number and reads as one line below it.
+  const ngr = ((day.stages || {})["P0"] || {}).ngr || {};
+  if(chain && ngr.f_c != null) {
+    return sdModelCard({title, tag: "P0 的输入", color: SD_COL.DET, trend,
+      value: `F ${sdN(ngr.f_c, 2)}°C`, valueTip: `十家确定性逐家减全队偏差后的中位数，P0 分布回归的输入（宪章 281）`,
+      cmp: [["比 P0", ngr.mu_c == null ? null : ngr.f_c - ngr.mu_c, "F 减 P0 回归中心 μ"], ["比市场", mk == null ? null : ngr.f_c - mk, "F 减市场均值"]],
+      sub: `<span title="挂牌前 F（宪章 267）：执行层数字，不进 P0">挂牌前 F ${sdN(F.f_c, 2)}°C</span> · <span title="进挂牌前 F 的各家原始最高温中位">原始中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
+      body, foot: "各家最新一轮的当日最高温；箭头＝比上一轮"});
+  }
   return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, trend,
     value: `F ${sdN(F.f_c, 2)}°C`, valueTip: `挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdLocal(F.computed_at_utc, true)}`,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? F.f_c - bel.mean : null, "F 减当前服务信念均值"], ["比市场", mk == null ? null : F.f_c - mk, "F 减市场均值"]],

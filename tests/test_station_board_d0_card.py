@@ -95,7 +95,7 @@ def test_the_card_renders() -> None:
         pytest.skip("node is required")
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     start = source.index("const SD_D0_FEATURE")
-    end = source.index("function sdDeterministic(day){")
+    end = source.index("function sdDeterministic(")
     day = {"d0": {"state": "ok", "band": "10-12", "base_c": 24.87, "base_systems": 3, "centre_c": 25.28, "sigma_c": 0.46,
                   "mode": "25°C", "mode_p": 0.68, "station_effect_c": 0.0, "window": ["2026-09-01", "2026-10-14"],
                   "as_of_utc": "2026-10-15T06:00:00Z", "computed_at_utc": "2026-10-15T06:00:00Z",
