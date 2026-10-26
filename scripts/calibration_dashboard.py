@@ -15762,7 +15762,6 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-nowbox .sd-cx-buckets{align-items:center;margin-top:4px}.sd-cx-nowbox .sd-cx-buckets small{font-size:11px;color:var(--muted)}
 .sd-cx-now{font-size:12.5px;color:var(--muted);margin-top:4px}.sd-cx-now b{color:var(--text)}
 .sd-cx-now b.sd-warm{color:var(--pill-red-fg)}.sd-cx-now b.sd-cold{color:var(--accent)}
-.sd-cx-range{font-size:12.5px;color:var(--muted)}.sd-cx-range b{color:var(--text)}
 .sd-ms{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .sd-ms-c{flex:1 1 120px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2,transparent)}
 .sd-ms-c small{display:block;font-size:11.5px;color:var(--muted)}
@@ -15782,6 +15781,11 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-plot .sd-cx-chart .sd-cx-ext{font-size:11.5px;font-weight:600;fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px}
 .sd-cx-plot .sd-cx-chart .sd-cx-projlab{font-size:11px;fill:var(--muted);paint-order:stroke;stroke:var(--card);stroke-width:3px}
 .sd-cx-chart .sd-cx-proj{cursor:help}
+.sd-cx-hls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 2px}
+.sd-cx-hl{border:1px solid var(--line);border-radius:10px;padding:6px 10px;display:flex;flex-direction:column;gap:1px}
+.sd-cx-hl small{font-size:11.5px;color:var(--muted)}.sd-cx-hl b{font-size:24px;line-height:1.2;white-space:nowrap}.sd-cx-hl span{font-size:12px;color:var(--muted);white-space:nowrap}
+.sd-cx-hl-hi{background:color-mix(in srgb,var(--pill-red-fg) 8%,transparent)}.sd-cx-hl-hi b{color:var(--pill-red-fg)}
+.sd-cx-hl-lo{background:color-mix(in srgb,var(--accent) 8%,transparent)}.sd-cx-hl-lo b{color:var(--accent)}
 .sd-cx-pastlab{font-size:10px;fill:var(--muted)}.sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
 .sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}.sd-cx-detail:empty{display:none}
 .sd-cx-detail b.sd-warm{color:var(--pill-red-fg)}.sd-cx-detail b.sd-cold{color:var(--accent)}
@@ -24790,14 +24794,18 @@ function sdSky(day){
             const hiP = S.length ? S.reduce((a, p) => p.total_c > a.total_c ? p : a, S[0]) : null;
             const loP = S.length ? S.reduce((a, p) => p.total_c < a.total_c ? p : a, S[0]) : null;
             const T = v => fc == null ? "—" : sdN(fc + v, 1) + "°C";
-            const past = [hiP && hiP.hour !== CX.hour ? `今天推算最高 ${hh(hiP.hour)}:00 → ${T(hiP.total_c)}` : "",
-                          loP && loP.hour !== CX.hour && loP !== hiP ? `最低 ${hh(loP.hour)}:00 → ${T(loP.total_c)}` : ""].filter(Boolean).join(" · ");
+            // The day's highest and lowest estimate as two tiles (user 2026-10-26 「突出：
+            // 今天推算最高 12:00 → 21.0°C · 最低 09:00 → 19.9°C」): the temperature big,
+            // the hour the estimate was made under it.
+            const tile = (word, p, cls) => `<div class="sd-cx-hl ${cls}" title="${sdEsc(`${hh(p.hour)}:00 时做的推算：今天最高温 ${T(p.total_c)}（ΔT ${sdSg(p.total_c, 2)}°C）。时刻是做推算的钟点，不是气温出现的时刻`)}"><small>${word}</small><b>${T(p.total_c)}</b><span>${hh(p.hour)}:00 推算 · ${sdSg(p.total_c, 1)}</span></div>`;
+            const past = hiP && loP && S.length > 1 && hiP !== loP
+              ? `<div class="sd-cx-hls">${tile("今天推算最高", hiP, "sd-cx-hl-hi")}${tile("今天推算最低", loP, "sd-cx-hl-lo")}</div>` : "";
             return `<div class="sd-cx-peak"><small>最新推算 · ${hh(CX.hour)}:00</small><b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b></div>`
               + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(CX.total_c)}">${T(CX.total_c)}</b> <small>（日前预报 ${sdN(fc, 1)}）</small></div>`
               + `<div class="sd-cx-nowbox"><div class="sd-cx-buckets" title="${sdEsc(`按最新 ${hh(CX.hour)}:00 的推算（${T(CX.total_c)}）在当天市场梯子上算出的各档概率（t 分布，自由度 ${CX.t_df || "—"}）。样本外分档 LogScore 每个时刻都显著好于日前预报`)}"><small>各档概率</small>${
                 (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div></div>`
               + sdMosSide(CX)
-              + (past ? `<div class="sd-cx-range">${past}</div>` : "");
+              + past;
           })()}
           ${cxForward}
         </div>
