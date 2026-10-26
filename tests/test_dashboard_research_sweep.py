@@ -1,8 +1,8 @@
 """The board's research render sweep (user ruling 2026-09-24 「单开研究节渲染」).
 
 Run for real against a stub board, as test_dashboard_render_timeout does for
-the page render: it never starts beside the page render, never starts onto a
-WAL past the resident's line, and otherwise asks the board for exactly one
+the page render: it never starts beside the page render, waits for the WAL to come
+under the resident's line, and otherwise asks the board for exactly one
 research section.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _project(tmp_path: Path) -> Path:
     (project / "scripts" / "lib").mkdir(parents=True)
     (project / "data").mkdir()
     shutil.copy(SWEEP, project / "scripts" / SWEEP.name)
-    for helper in ("single_instance.sh", "run_with_timeout.sh"):
+    for helper in ("single_instance.sh", "run_with_timeout.sh", "ssot_reader_turn.sh"):
         shutil.copy(ROOT / "scripts" / "lib" / helper, project / "scripts" / "lib" / helper)
     (project / "scripts" / "lib" / "resolve_project_python.sh").write_text(
         "resolve_project_python() { printf '%s\\n' " + repr(sys.executable) + "; }\n",
@@ -65,17 +65,24 @@ def test_it_asks_the_board_for_one_research_section(tmp_path: Path) -> None:
     assert "] done" in result.stdout
 
 
-def test_it_does_not_start_onto_an_oversized_wal(tmp_path: Path) -> None:
+def test_it_waits_for_an_oversized_wal_to_be_truncated(tmp_path: Path) -> None:
+    # Since 2026-10-17 (scripts/lib/ssot_reader_turn.sh) it waits the WAL out
+    # instead of skipping the hour, and starts once the resident truncates it.
     project = _project(tmp_path)
-    (project / "data" / "bayes_basket_target_ssot.db-wal").write_bytes(b"\0" * 4096)
-    env_pattern = "no-such-process-name-xyz"
+    wal = project / "data" / "bayes_basket_target_ssot.db-wal"
+    wal.write_bytes(b"\0" * 4096)
     os.environ["PM_DASHBOARD_RENDER_MAX_WAL_BYTES"] = "1024"
+    os.environ["PM_SSOT_READER_POLL_SEC"] = "1"
     try:
-        result = _run(project, env_pattern)
+        truncate = subprocess.Popen(["bash", "-c", f"sleep 2; : > '{wal}'"])
+        result = _run(project, "no-such-process-name-xyz")
+        truncate.wait()
     finally:
         os.environ.pop("PM_DASHBOARD_RENDER_MAX_WAL_BYTES", None)
-    assert result.returncode == 0 and "skipped: SSOT WAL 4096" in result.stdout
-    assert not (project / "data" / "called").exists()
+        os.environ.pop("PM_SSOT_READER_POLL_SEC", None)
+    assert result.returncode == 0, result.stderr
+    assert "for the SSOT WAL to come under 1024" in result.stdout
+    assert (project / "data" / "called").read_text() == "--refresh-research"
 
 
 def test_it_does_not_start_beside_the_page_render(tmp_path: Path) -> None:

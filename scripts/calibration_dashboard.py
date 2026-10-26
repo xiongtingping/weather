@@ -14450,10 +14450,16 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
     # skill (3.5 h, 632 s) sat 56 hours old while truth_landing (2.5 h) and
     # scorecard (3 h) were refreshed again and again ahead of it.  Oldest
     # first is a rotation: no heavy page waits longer than one lap.
+    #
+    # The cheap pages go oldest page first too (user 2026-10-27 「打前端各板块超期
+    # 问题」): by age / lifetime the 30-minute pages read 6-11x overdue after a few
+    # hours and led every run, while ssot_capacity (24 h lifetime, 28 s) sat 48
+    # hours old at 2.0x and member_depth's cheap neighbours behind it -- a run
+    # gets 5-10 minutes before the page compute starts, so the tail never came.
     due.sort(key=lambda item: (
         item[1] in killed_at,
         item[2] >= RESEARCH_SECTION_MIN_COST_SEC,
-        -(_page_ages[item[1]] if item[2] >= RESEARCH_SECTION_MIN_COST_SEC else item[0]),
+        -_page_ages[item[1]],
         item[1],
     ))
     # But a heavy page the run's own budget rule would pass over behind the

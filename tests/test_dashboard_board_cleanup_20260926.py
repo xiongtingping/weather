@@ -375,6 +375,22 @@ def test_the_cheap_starved_pages_go_before_a_heavier_more_overdue_one(pages) -> 
     assert names == ["ssot_capacity", "certificate_authority", "run_cadence"]
 
 
+def test_a_long_lived_cheap_page_is_not_starved_by_short_lived_ones(pages, monkeypatch) -> None:
+    """2026-10-27 (user 「打前端各板块超期问题」): by age / lifetime the 30-minute
+    pages read 6-11x and led every run, while ssot_capacity (24 h lifetime)
+    sat 48 hours old at 2.0x; the cheap queue goes oldest page first."""
+
+    now = datetime(2026, 10, 27, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"ssot_capacity": 86400})
+    _page(pages, "ssot_capacity", age_sec=48 * 3600, cost=28.0, now=now)
+    _page(pages, "oos_scores", age_sec=5 * 3600, cost=40.0, now=now)
+    specs = {name: {} for name in ("ssot_capacity", "oos_scores")}
+
+    names = [name for _overdue, name, _cost in C.research_due(specs, now)]
+
+    assert names == ["ssot_capacity", "oos_scores"]
+
+
 def test_a_heavy_page_that_never_fits_after_the_cheap_ones_goes_first(pages) -> None:
     """2026-10-02: bias_half_life (2,804 s) sat 102 hours old, run_cadence
     (1,900 s) 11 and member_depth 37 -- the budget rule passed each over
