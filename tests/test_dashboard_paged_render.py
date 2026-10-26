@@ -1136,3 +1136,23 @@ def test_a_section_larger_than_the_run_goes_alone_and_only_when_ripe(paged, monk
     second = C.refresh_research_section(paged / "ssot.db")
     assert "slow_moving computed" in second and "other" not in second, second
     C._paged_run_start(paged / "ssot.db")
+
+
+def test_one_slow_run_does_not_starve_the_next(paged) -> None:
+    """2026-10-26 (user 「打前端各板块超期问题」): the chain once took 648 s on a
+    host deep in swap and, read as the reserve, spoke for the whole budget of
+    every run after it.  The reserve reads the median of the last few costs."""
+
+    path = paged / "sections" / C.RENDER_EVERY_RUN_COSTS
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"chain": [20.0, 22.0, 21.0, 23.0, 648.0], "members": 30.0}))
+    costs = C._load_every_run_costs()
+    assert costs["chain"] == 22.0, "one outlier is not the reserve"
+    assert costs["members"] == 30.0, "the older one-number form still reads"
+    C._PAGED_RUN["every_run_costs"] = costs
+    C._SECTION_CACHE_LOG["chain"] = {"build_sec": 19.0}
+    C._save_every_run_costs()
+    C._save_every_run_costs()  # again at the end of the run: recorded once
+    saved = json.loads(path.read_text())
+    assert saved["chain"] == [22.0, 21.0, 23.0, 648.0, 19.0]
+    assert C._PAGED_RUN["every_run_costs"]["chain"] == 22.0

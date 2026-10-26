@@ -13670,6 +13670,14 @@ RENDER_SECTION_SPECS = "_section_specs.json"
 RENDER_EVERY_RUN_COSTS = "_every_run_costs.json"
 #: Room kept for an every-run section with no recorded cost yet.
 RENDER_EVERY_RUN_DEFAULT_COST_SEC = 60.0
+#: How many of each every-run section's recent costs the reserve reads, as
+#: their median.  One cost alone let a single slow run starve every paged
+#: section of the next: 2026-10-26 the chain read once took 648 s on a host
+#: deep in swap (22 s on its own), the recorded costs summed to 1,243 s
+#: against the 1,200 s budget, and from 05:20Z every paged section was served
+#: 「budget」 run after run -- 40 of 50 overdue, the oldest by 37 hours (user
+#: 「打前端各板块超期问题」).
+RENDER_EVERY_RUN_COST_HISTORY = 5
 #: Total a run may spend waiting for gaps, every section together.  A wait
 #: only moves a read into a gap when one is near; the WAL line, not the wait,
 #: is what protects production.  Per-section caps with no total let the
@@ -13767,29 +13775,44 @@ def _paged_run_start(db: Path) -> None:
     })
 
 
-def _load_every_run_costs() -> dict[str, float]:
+def _load_every_run_cost_history() -> dict[str, list[float]]:
+    """Each every-run section's recent costs, oldest first (a bare number is
+    the file's older one-cost form)."""
+
     try:
         raw = json.loads(
             (SECTION_CACHE_DIR / RENDER_EVERY_RUN_COSTS).read_text(encoding="utf-8")
         )
         return {
-            str(k): float(v) for k, v in raw.items()
+            str(k): [float(x) for x in (v if isinstance(v, list) else [v])][-RENDER_EVERY_RUN_COST_HISTORY:]
+            for k, v in raw.items()
             if str(k) in RENDER_EVERY_RUN_SECTIONS
         }
     except (OSError, ValueError, TypeError, AttributeError):
         return {}
 
 
+def _load_every_run_costs() -> dict[str, float]:
+    """What the reserve reads: the median of each section's recent costs."""
+
+    return {k: float(statistics.median(v)) for k, v in _load_every_run_cost_history().items() if v}
+
+
 def _save_every_run_costs() -> None:
     costs = _PAGED_RUN.setdefault("every_run_costs", {})
+    history = _PAGED_RUN.setdefault("every_run_cost_history", _load_every_run_cost_history())
+    added = _PAGED_RUN.setdefault("every_run_cost_added", set())
     for name in RENDER_EVERY_RUN_SECTIONS:
         entry = _SECTION_CACHE_LOG.get(name) or {}
-        if entry.get("build_sec") is not None:
-            costs[name] = float(entry["build_sec"])
+        # Once a run: this is called as each section finishes and again at the end.
+        if entry.get("build_sec") is not None and not entry.get("reused") and name not in added:
+            added.add(name)
+            history[name] = (history.get(name, []) + [float(entry["build_sec"])])[-RENDER_EVERY_RUN_COST_HISTORY:]
+            costs[name] = float(statistics.median(history[name]))
     try:
         SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         tmp = SECTION_CACHE_DIR / f"{RENDER_EVERY_RUN_COSTS}.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps(costs, sort_keys=True), encoding="utf-8")
+        tmp.write_text(json.dumps(history, sort_keys=True), encoding="utf-8")
         tmp.replace(SECTION_CACHE_DIR / RENDER_EVERY_RUN_COSTS)
     except OSError:
         pass
