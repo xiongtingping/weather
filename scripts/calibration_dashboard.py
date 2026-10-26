@@ -18646,8 +18646,34 @@ function wrfTmaxPanel(){
       return `<td class="mono" style="text-align:center" title="${h(`${WRF_STATUS[r.status] || r.status} · 最高出现在当地 ${r.at_local} · 输出到 ${r.last_local}`)}">${n(r.tmax_c)}${mark}${r.error_c == null ? "" : `<div class="${errCls(r.error_c)}" style="font-size:11px">${sg(r.error_c)}</div>`}</td>`; };
     const tbl = (cs, ds) => `<table style="width:100%"><thead><tr><th>日期</th><th>实测</th>${cs.map(c => `<th style="color:${col(c)};white-space:nowrap">${h(sname(c))}</th>`).join("")}<th class="muted">GFS</th></tr></thead><tbody>${ds.slice().reverse().map(d => { const E = S.days[d];
       return `<tr><td class="mono" style="white-space:nowrap">${d.slice(5)}</td><td class="mono"><b>${E.truth_c == null ? "—" : n(E.truth_c, 0)}</b></td>${cs.map(c => cell(E.configs[c])).join("")}<td class="mono muted" style="text-align:center">${n((E.gfs || {}).tmax_c)}</td></tr>`; }).join("")}</tbody></table>`;
-    const table = `<div class="card" style="margin-top:8px;overflow-x:auto">${tbl(KEYC, shown)}
-      <div class="muted" style="font-size:11.5px;margin-top:4px">小字＝减实测（绿 &lt;0.5°，橙 ≥1.5°）· ⏳ 运行中 · … 峰段未完 · ✕ 中断</div></div>`;
+    // The day-by-day table, redesigned (user 2026-10-26 「重新设计排版，突出重点核心信息即可」): only
+    // what the 11:10 issue can be held against at the same moment -- WRF with satellite cloud,
+    // WRF with its own cloud, the market and the production belief, each as of the issue (the
+    // forward record, else the strict as-of replay, marked) and the three-day forecast (the
+    // evening re-runs are left out: they hold the airport's maximum so far); each cell its error, the row's nearest outlined, the column's mean
+    // error on top.  Hindcasts and raw GFS fold away below.
+    const COLS = [
+      ["sat", "WRF 卫星云", "#58a6ff", E => (E.nowcast || E.replay || {}).sat_obs_c, E => !E.nowcast && E.replay],
+      ["ctl", "WRF 自估云", "#3fb950", E => (E.nowcast || E.replay || {}).ctl_obs_c, E => !E.nowcast && E.replay],
+      ["mkt", "市场", "#f778ba", E => (E.nowcast || E.replay || {}).market_mean_c, E => !E.nowcast && E.replay],
+      ["bel", "生产模型", "#d29922", E => (E.nowcast || E.replay || {}).belief_mean_c, E => !E.nowcast && E.replay],
+      ["fcst", "3 日预报", "#8b949e", E => ((E.configs || {}).fcst || {}).tmax_c, () => false]];
+    const tdays = days.filter(d => COLS.some(c => c[3](S.days[d]) != null)).slice().reverse();
+    const errOf = (E, c) => { const v = c[3](E); return v == null || E.truth_c == null ? null : v - E.truth_c; };
+    const meanErr = c => { const e = tdays.map(d => errOf(S.days[d], c)).filter(x => x != null); return e.length ? [e.reduce((a, x) => a + Math.abs(x), 0) / e.length, e.length] : null; };
+    const chip = e => e == null ? "" : `<span class="mono" style="font-size:11px;padding:0 4px;border-radius:4px;margin-left:4px;background:${Math.abs(e) < 0.5 ? "rgba(63,185,80,.18)" : Math.abs(e) >= 1.5 ? "rgba(248,81,73,.16)" : "rgba(210,153,34,.16)"}">${sg(e)}</span>`;
+    const head2 = COLS.map(c => { const m = meanErr(c); return `<th style="text-align:right;white-space:nowrap"><div style="color:${c[2]}">${h(c[1])}</div><div class="mono" style="font-size:18px;font-weight:700">${m ? n(m[0], 2) + "°" : "—"}</div><div class="muted" style="font-size:10.5px;font-weight:400">平均误差 · ${m ? m[1] : 0} 天</div></th>`; }).join("");
+    const body2 = tdays.map(d => { const E = S.days[d];
+      const errs = COLS.map(c => errOf(E, c)), best = Math.min(...errs.filter(x => x != null).map(Math.abs));
+      return `<tr><td class="mono">${h(d.slice(5))}</td><td class="mono" style="font-weight:700">${E.truth_c == null ? "—" : n(E.truth_c, 0)}</td>${COLS.map((c, i) => { const v = c[3](E);
+        if(v == null) return `<td></td>`;
+        const top = errs[i] != null && Math.abs(errs[i]) === best;
+        return `<td class="mono" style="text-align:right;white-space:nowrap${top ? ";box-shadow:inset 0 0 0 1.5px " + c[2] + ";border-radius:6px" : ""}"${c[4](E) ? ` title="严格回放：只用当天 11:10 前已有的数据重算"` : ""}>${n(v)}${c[4](E) ? `<sup class="muted" style="font-size:9px">回放</sup>` : ""}${chip(errs[i])}</td>`; }).join("")}</tr>`; }).join("");
+    const table = `<div class="card" style="margin-top:8px;overflow-x:auto"><div class="trend-t">逐日最高温 · 11:30 出数时各家报的值</div>
+      <table style="width:100%"><thead><tr><th>日期</th><th>实测</th>${head2}</tr></thead><tbody>${body2}</tbody></table>
+      <div class="muted" style="font-size:11.5px;margin-top:4px">色块＝减实测（绿 &lt;0.5°，橙 0.5–1.5°，红 ≥1.5°）· 框＝当天最准 · 回放＝严格回放（10-01 起，只用 11:10 前数据），其余为当天实际出数 · WRF 已与当时报文最高取大</div></div>
+      <details style="margin-top:6px"><summary class="muted">回算与 GFS 原始逐日表</summary><div class="card" style="margin-top:6px;overflow-x:auto">${tbl(KEYC, shown)}
+      <div class="muted" style="font-size:11.5px;margin-top:4px">小字＝减实测（绿 &lt;0.5°，橙 ≥1.5°）· ⏳ 运行中 · … 峰段未完 · ✕ 中断</div></div></details>`;
     const others = rest.filter(c => !KEYC.includes(c));
     const restDays = days.filter(d => others.some(c => S.days[d].configs[c]));
     const restTable = others.length ? `<details style="margin-top:6px"><summary class="muted">其它回算配置逐日表（${others.length}）</summary><div class="card" style="margin-top:6px;overflow-x:auto">${tbl(others, restDays)}</div></details>` : "";
