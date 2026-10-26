@@ -1,0 +1,193 @@
+{
+ "20261001": {
+  "scans": 13,
+  "source": "none"
+ },
+ "20261002": {
+  "scans": 13,
+  "source": "none"
+ },
+ "20261003": {
+  "scans": 13,
+  "source": "none"
+ },
+ "20261004": {
+  "scans": 13,
+  "source": "none"
+ },
+ "20261005": {
+  "scans": 13,
+  "source": "none"
+ },
+ "20261006": {
+  "scans": 13,
+  "source": "ARP within 1 deg",
+  "pixels": 435,
+  "aot500": 0.082,
+  "ae": 1.267,
+  "ssa": 0.889,
+  "aod550": 0.073
+ },
+ "20261007": {
+  "scans": 13,
+  "source": "ARP within 1 deg",
+  "pixels": 162,
+  "aot500": 0.192,
+  "ae": 1.466,
+  "ssa": 0.908,
+  "aod550": 0.167
+ },
+ "20261008": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 233,
+  "aot500": 0.446,
+  "ae": 1.871,
+  "ssa": 0.928,
+  "aod550": 0.373
+ },
+ "20261009": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 201,
+  "aot500": 0.149,
+  "ae": 1.482,
+  "ssa": 0.934,
+  "aod550": 0.129
+ },
+ "20261010": {
+  "scans": 13,
+  "source": "median of earlier days",
+  "pixels": 0,
+  "aot500": 0.17,
+  "ae": 1.474,
+  "ssa": 0.918,
+  "aod550": 0.148
+ },
+ "20261011": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 53,
+  "aot500": 0.088,
+  "ae": 1.492,
+  "ssa": 0.943,
+  "aod550": 0.076
+ },
+ "20261012": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 113,
+  "aot500": 0.331,
+  "ae": 1.594,
+  "ssa": 0.943,
+  "aod550": 0.284
+ },
+ "20261013": {
+  "scans": 12,
+  "source": "ARP within 1 deg",
+  "pixels": 230,
+  "aot500": 0.105,
+  "ae": 1.583,
+  "ssa": 0.958,
+  "aod550": 0.09
+ },
+ "20261014": {
+  "scans": 10,
+  "source": "ARP within 3 deg",
+  "pixels": 147,
+  "aot500": 0.064,
+  "ae": 1.387,
+  "ssa": 0.892,
+  "aod550": 0.056
+ },
+ "20261015": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 25,
+  "aot500": 0.203,
+  "ae": 1.371,
+  "ssa": 0.958,
+  "aod550": 0.178
+ },
+ "20261016": {
+  "scans": 13,
+  "source": "ARP within 3 deg",
+  "pixels": 649,
+  "aot500": 0.048,
+  "ae": 1.481,
+  "ssa": 0.919,
+  "aod550": 0.042
+ },
+ "20261017": {
+  "scans": 13,
+  "source": "ARP within 1 deg",
+  "pixels": 528,
+  "aot500": 0.157,
+  "ae": 1.626,
+  "ssa": 0.946,
+  "aod550": 0.134
+ },
+ "20261018": {
+  "scans": 13,
+  "source": "ARP within 3 deg",
+  "pixels": 582,
+  "aot500": 0.081,
+  "ae": 1.55,
+  "ssa": 0.934,
+  "aod550": 0.07
+ },
+ "20261019": {
+  "scans": 13,
+  "source": "ARP within 1 deg",
+  "pixels": 575,
+  "aot500": 0.063,
+  "ae": 1.499,
+  "ssa": 0.91,
+  "aod550": 0.055
+ },
+ "20261020": {
+  "scans": 13,
+  "source": "ARP within 1 deg",
+  "pixels": 627,
+  "aot500": 0.066,
+  "ae": 1.595,
+  "ssa": 0.946,
+  "aod550": 0.057
+ },
+ "20261021": {
+  "scans": 13,
+  "source": "ARP within 3 deg",
+  "pixels": 1084,
+  "aot500": 0.101,
+  "ae": 1.493,
+  "ssa": 0.91,
+  "aod550": 0.088
+ },
+ "20261022": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 53,
+  "aot500": 0.043,
+  "ae": 1.515,
+  "ssa": 0.922,
+  "aod550": 0.037
+ },
+ "20261023": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 195,
+  "aot500": 0.04,
+  "ae": 1.561,
+  "ssa": 0.946,
+  "aod550": 0.034
+ },
+ "20261024": {
+  "scans": 13,
+  "source": "ARP within 2 deg",
+  "pixels": 371,
+  "aot500": 0.07,
+  "ae": 1.623,
+  "ssa": 0.94,
+  "aod550": 0.06
+ }
+}
