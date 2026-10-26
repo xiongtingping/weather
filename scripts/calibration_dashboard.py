@@ -24581,7 +24581,7 @@ function sdSky(day){
     // From the day's first point: 0..17 once the night hours (M6) are in.
     // Wide enough for a tick every hour (user 2026-10-21 「时间小时轴按照1h为单位」).
     // Taller since the parts left the card (user 2026-10-21 「把曲线图放大」).
-    const W = 560, Hh = 190, x0 = 32, x1 = 550, y0 = 14, y1 = 166;
+    const W = 560, Hh = 198, x0 = 32, x1 = 550, y0 = 14, y1 = 166;
     const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = proj.length || Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
     // Headroom of 1 °C past the farthest point, so the 最高/最低 labels above/below it stay
     // inside the plot instead of being pressed onto the axis (user 2026-10-22 「显示有问题」).
@@ -24629,7 +24629,10 @@ function sdSky(day){
         // bottom when above): beside the line it crowded the newest point's and the
         // lowest's labels and ran off the right edge (user 2026-10-22 「显示有问题」).
         return `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="2 2"/>`
-          + `<text class="sd-cx-projlab" x="${x1 - 2}" y="${pk.total_c < 0 ? y0 + 10 : y1 - 6}" text-anchor="end">可能最高 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"} · ${hh(pk.hour)}:00</text>`;
+          // No hour on it (user 2026-10-26 「最高不是20:00吧」): the axis is when an
+          // estimate was made, so the hour of the dashed line's top is not when the
+          // day peaks -- only the value it points to is shown.
+          + `<text class="sd-cx-projlab" x="${x1 - 2}" y="${pk.total_c < 0 ? y0 + 10 : y1 - 6}" text-anchor="end">往后推算最高温 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"}（外推）</text>`;
       })() : "";
     // The day's highest and lowest ΔT so far, marked (user 2026-10-21 「图表上标记最高
     // 和最低的ΔT」): a ring and a label above the highest, below the lowest; the
@@ -24642,12 +24645,14 @@ function sdSky(day){
       return `<circle cx="${x}" cy="${y}" r="7" fill="none" stroke="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}" stroke-width="1.4"/>`
         + (p === last ? "" : `<text class="sd-cx-ext" x="${x}" y="${up ? Math.max(y - 11, y0 + 10) : Math.min(y + 20, y1 - 4)}" text-anchor="${anchor}">${word} ${sdSg(p.total_c, 1)}</text>`);
     };
-    const extremes = series.length > 1 && hiP.total_c !== loP.total_c ? mark(hiP, "最高", true) + mark(loP, "最低", false) : "";
+    // 「推算最高/最低」: the highest and lowest estimate made so far, at the hour it was
+    // made -- not the hour the temperature peaked.
+    const extremes = series.length > 1 && hiP.total_c !== loP.total_c ? mark(hiP, "推算最高", true) + mark(loP, "推算最低", false) : "";
     return `<svg class="sd-cx-chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="合成 ΔT 逐小时">
       <polygon points="${band}" fill="var(--muted)" opacity=".13"/>
       <line x1="${x0}" x2="${x1}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width=".8"/>
       <line x1="${x0}" x2="${x1}" y1="${y1}" y2="${y1}" stroke="var(--line)"/>
-      <g class="sd-cx-ax">${ticksX}${ticksY}</g>
+      <g class="sd-cx-ax">${ticksX}${ticksY}<text x="${x1}" y="${y1 + 28}" text-anchor="end">横轴＝做这次推算的钟点（时）</text></g>
       ${line}${dashed}${extremes}${dots}
       <text class="sd-cx-last" x="${Math.min(X(last.hour) + 5, x1 - 2)}" y="${Y(last.total_c) - 6}" text-anchor="${last.hour >= 16 ? "end" : "start"}">${sdSg(last.total_c, 1)}</text>
     </svg>`;
