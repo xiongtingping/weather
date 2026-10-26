@@ -264,3 +264,14 @@ def test_the_p1_refit_reads_the_regressions_roots():
     assert "build_p0_ngr_root_replay.py --live" in text and "taf" not in text.split("--live")[1].split("\n")[0]
     assert not (ROOT / "scripts" / "taf_likelihood_refit_sweep.sh").exists()
     assert not hasattr(RB, "build_p1_roots") and not hasattr(RB, "P0M_ON_NEW_ROOT")
+
+
+def test_the_receipt_parts_add_up_to_the_served_centre():
+    """User 2026-10-26 「我看不出确定性预报和p0的关系」: the receipt says how far F
+    moved the centre -- ensemble + F pull + radiation + constant = mu."""
+
+    _vector, receipt = _serve(_fit())
+    ct = receipt["centre_terms"]
+    total = ct["ensemble_c"] + ct["f_pull_c"] + ct["radiation_c"] + ct["constant_c"]
+    assert total == pytest.approx(receipt["mu_c"], abs=5e-4)
+    assert ct["f_pull_c"] == pytest.approx(ct["f_weight"] * (receipt["f_c"] - ct["ensemble_c"]), abs=5e-4)

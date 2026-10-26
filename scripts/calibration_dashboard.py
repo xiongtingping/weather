@@ -15991,6 +15991,7 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-chain.sd-chain-2{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}
 .sd-chain>.sd-chain-in{grid-template-columns:minmax(0,1fr);margin:0}
 .sd-chain-a{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:2px}
+.sd-ngr-terms{display:inline-flex;flex-wrap:wrap;gap:2px 8px}.sd-ngr-terms b{color:var(--text)}
 .sd-chain-a span{font-size:22px;line-height:1}.sd-chain-a small{font-size:10.5px;white-space:nowrap}
 @media (max-width:900px){.sd-chain,.sd-chain.sd-chain-2{grid-template-columns:minmax(0,1fr)}.sd-chain-a{flex-direction:row;padding:4px 0}.sd-chain-a span{transform:rotate(90deg)}}
 .sd-hit-wrap{margin:4px 0 12px}.sd-hit-h{font-weight:600;margin:0 0 6px}.sd-hit-h small{font-weight:400;color:var(--muted);margin-left:6px}
@@ -22363,7 +22364,11 @@ function sdNgrBlock(g){
   if(g.state !== "SERVED" || !g.move) {
     return `<div class="sd-cons-sh" title="${sdEsc(tip)}">分布回归未服务 · ${sdEsc(SD_NGR_REASON[g.reason] || g.reason || "—")}（服务旧链向量）${wf ? " · " + wf : ""}</div>`;
   }
-  const math = `F ${sdN(g.f_c, 1)}°C（${names.length} 家，去偏后）· μ ${sdN(g.mu_c, 2)}°C · σ ${sdN(g.sd_c, 2)}°C · 辐射 ${sdSg(g.radiation_standardised, 2)}`;
+  const ct = g.centre_terms;
+  // The centre as its parts, so the deterministic forecasts' share is a number.
+  const math = ct
+    ? `<span class="sd-ngr-terms"><span title="各入座集合家族的加权中心">集合 ${sdN(ct.ensemble_c, 2)}</span><b title="F ${sdN(g.f_c, 2)}°C（${names.length} 家确定性，去偏后中位）与集合中心之差的 ${sdN(100 * ct.f_weight, 0)}%">＋ F 拉 ${sdSg(ct.f_pull_c, 2)}</b><span title="晴空标准分 ${sdSg(g.radiation_standardised, 2)}">＋ 辐射 ${sdSg(ct.radiation_c, 2)}</span><span>＋ 常数 ${sdSg(ct.constant_c, 2)}</span><b>＝ μ ${sdN(g.mu_c, 2)}°C</b></span><span class="muted"> · F ${sdN(g.f_c, 1)}°C 占差的 ${sdN(100 * ct.f_weight, 0)}% · σ ${sdN(g.sd_c, 2)}°C</span>`
+    : `F ${sdN(g.f_c, 1)}°C（${names.length} 家，去偏后）· μ ${sdN(g.mu_c, 2)}°C · σ ${sdN(g.sd_c, 2)}°C · 辐射 ${sdSg(g.radiation_standardised, 2)}`;
   return sdMoveBox("分布回归 · 挪", g.move.delta_c, g.move, ["旧链", "回归"], math, tip, wf);
 }
 // User 2026-10-25 「…应该体现…挪动效果」: P1 shows its own update -- the root it
@@ -23190,11 +23195,17 @@ function sdDetMedian(day){
 // arrow; then the read-only estimates beside it, each set against P1.
 function sdChain(day){
   const arrow = (word, tip) => `<div class="sd-chain-a" title="${sdEsc(tip)}"><span>→</span><small>${word}</small></div>`;
+  // User 2026-10-26 「我看不出确定性预报和p0的关系」: the first arrow says how far F
+  // moved P0's centre -- its share of the gap between F and the ensemble centre.
+  const ct = ((((day.stages || {})["P0"] || {}).ngr) || {}).centre_terms;
+  const fWord = ct ? `F 拉 ${sdSg(ct.f_pull_c, 2)}°C` : "回归输入";
+  const fTip = ct ? `P0 中心＝集合中心 ${sdN(ct.ensemble_c, 2)}°C ＋ F 拉动 ${sdSg(ct.f_pull_c, 2)}°C（F 与集合中心之差的 ${sdN(100 * ct.f_weight, 0)}%）＋ 辐射 ${sdSg(ct.radiation_c, 2)}°C ＋ 常数 ${sdSg(ct.constant_c, 2)}°C（宪章 281）`
+    : "十家确定性逐家去偏后的中位数 F，与各家集合一起进 P0 的分布回归（宪章 281）";
   const det = sdDeterministic(day, true);
   const p = sdProbabilityCards(day, true);
   const side = [sdMemberBayes(day), sdD0(day), sdMos(day), sdWrf(day)].filter(Boolean);
   return `<div class="sd-rel-h">生产链 <small>车道读的概率：P1 有就读 P1，没有读 P0</small></div>
-    <div class="sd-chain${det ? "" : " sd-chain-2"}">${det ? `<div class="sd-four sd-chain-in">${det}</div>${arrow("回归输入", "十家确定性逐家去偏后的中位数 F，与各家集合一起进 P0 的分布回归（宪章 281）")}` : ""}${p.P0 || ""}${arrow("× 实况", "P1＝P0 × 实况报文似然，再施已报最高的下界（宪章 150/283）")}${p.P1 || ""}</div>
+    <div class="sd-chain${det ? "" : " sd-chain-2"}">${det ? `<div class="sd-four sd-chain-in">${det}</div>${arrow(fWord, fTip)}` : ""}${p.P0 || ""}${arrow("× 实况", "P1＝P0 × 实况报文似然，再施已报最高的下界（宪章 150/283）")}${p.P1 || ""}</div>
     ${side.length ? `<div class="sd-rel-h">旁证 <small>只读，不进生产；都与 P1、市场比</small></div>
     <div class="sd-four${side.length === 4 ? "" : " sd-three"}">${side.join("")}</div>` : ""}`;
 }

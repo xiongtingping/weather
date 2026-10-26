@@ -475,6 +475,7 @@ def _ngr_brief(L: Mapping[str, Any], axis) -> dict[str, Any] | None:
         "mu_c": _float(receipt.get("mu_c")), "sd_c": _float(receipt.get("sd_c")),
         "radiation_standardised": _float(receipt.get("radiation_standardised")),
         "family_moments": receipt.get("family_moments") or {},
+        "centre_terms": receipt.get("centre_terms") or None,
         "deterministic": {str(k): _float((v or {}).get("day_max_c")) for k, v in (receipt.get("deterministic") or {}).items()},
         "move": move,
     }

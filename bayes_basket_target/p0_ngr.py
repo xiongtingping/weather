@@ -171,6 +171,28 @@ def det_features(values: Mapping[str, float], bias: Mapping[str, float]) -> tupl
 # The model: one implementation, batched.
 
 
+def centre_terms(
+    theta: Sequence[float], *, m: np.ndarray, has: np.ndarray, F: np.ndarray, L: np.ndarray, rad: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """The centre's parts: mu = mu_e + a + f_pull + rad_warm + rad_cold.
+
+    ``mu_e`` is the seated families' weighted centre, ``f_weight`` the share of
+    the gap F - mu_e the regression takes at this lead, ``f_pull`` that share of
+    the gap -- how far the deterministic forecasts move P0.  ``predict_batch``
+    sums them in this order, so the receipt's parts add up to the served mu."""
+
+    theta = np.asarray(theta, float)
+    nf = len(FAMILIES)
+    a, w0, w1, _c0, _c1, _c2, _c3, rw, rc = theta[nf:nf + 9]
+    pi = np.where(has, np.exp(np.clip(theta[:nf], -8.0, 8.0))[None, :], 0.0)
+    tot = pi.sum(1)
+    mu_e = (pi * m).sum(1) / tot
+    f_weight = w0 + w1 * L
+    return {"pi": pi, "tot": tot, "mu_e": mu_e, "a": a + 0.0 * mu_e, "f_weight": f_weight,
+            "f_pull": f_weight * (F - mu_e), "rad_warm": rw * np.maximum(rad, 0.0),
+            "rad_cold": rc * np.minimum(rad, 0.0)}
+
+
 def predict_batch(
     theta: Sequence[float], *, m: np.ndarray, s: np.ndarray, has: np.ndarray, F: np.ndarray, Z: np.ndarray,
     L: np.ndarray, rad: np.ndarray, tlo: np.ndarray, thi: np.ndarray, mask: np.ndarray,
@@ -179,14 +201,13 @@ def predict_batch(
 
     theta = np.asarray(theta, float)
     nf = len(FAMILIES)
-    a, w0, w1, c0, c1, c2, c3, rw, rc = theta[nf:nf + 9]
-    pi = np.where(has, np.exp(np.clip(theta[:nf], -8.0, 8.0))[None, :], 0.0)
-    tot = pi.sum(1)
-    mu_e = (pi * m).sum(1) / tot
+    _a, _w0, _w1, c0, c1, c2, c3, _rw, _rc = theta[nf:nf + 9]
+    t = centre_terms(theta, m=m, has=has, F=F, L=L, rad=rad)
+    pi, tot, mu_e = t["pi"], t["tot"], t["mu_e"]
     within = (pi * s ** 2).sum(1) / tot
     between = (pi * (m - mu_e[:, None]) ** 2).sum(1) / tot
     s_e = np.sqrt(within + between)
-    mu = mu_e + a + (w0 + w1 * L) * (F - mu_e) + rw * np.maximum(rad, 0.0) + rc * np.minimum(rad, 0.0)
+    mu = mu_e + t["a"] + t["f_pull"] + t["rad_warm"] + t["rad_cold"]
     sd = np.exp(np.clip(c0 + c1 * L + c2 * np.log(s_e) + c3 * Z, -3.0, 2.5))
     lo = np.where(np.isfinite(tlo), (tlo - mu[:, None]) / sd[:, None], -np.inf)
     hi = np.where(np.isfinite(thi), (thi - mu[:, None]) / sd[:, None], np.inf)
@@ -283,8 +304,17 @@ def serve(
         # predict_batch already applied charter 224's floor (lift, renormalise --
         # floor_probabilities' rule); the vector served is the one the fit scored.
         ngr = {k: float(q[0, i]) for i, k in enumerate(ordered)}
+        terms = centre_terms(fit["theta"], m=m, has=has, F=np.array([F]), L=np.array([L]), rad=np.array([rad]))
         receipt.update(f_c=round(F, 4), z=round(Z, 4), L=round(L, 4), mu_c=round(float(mu[0]), 4),
                        sd_c=round(float(sd[0]), 4),
+                       # How the centre was put together (user 2026-10-26 「我看不出确定性预报和p0的关系」).
+                       centre_terms={
+                           "ensemble_c": round(float(terms["mu_e"][0]), 4),
+                           "f_weight": round(float(terms["f_weight"][0]), 4),
+                           "f_pull_c": round(float(terms["f_pull"][0]), 4),
+                           "radiation_c": round(float(terms["rad_warm"][0] + terms["rad_cold"][0]), 4),
+                           "constant_c": round(float(terms["a"][0]), 4),
+                       },
                        ngr_probabilities={k: round(float(ngr[k]), 10) for k in ordered})
         if receipt["fit_verdict"] != "PASS":
             receipt["reason"] = "GATE_NOT_PASSED"
