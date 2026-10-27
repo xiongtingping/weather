@@ -19003,16 +19003,18 @@ function wrfTmaxPanel(){
     // 最高温预报"专区也要体现」): early, the frozen 11:10 one and the half-hour re-runs, against the
     // airport's maximum so far, the market then and the truth once in -- the station card's chart.
     const ISSUE_KIND = {early: "早版", frozen: "冻结版", update: "重跑"};
-    const issues = [L.nowcast, ...(L.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_obs_c != null)
+    // The curve draws WRF's own maximum (user 2026-10-27 「把各版曲线改成画 WRF 原始最高温，已报最高仍用灰虚线
+    // 单独画」): taken with the airport's maximum it sat on the reports and hid WRF's call.
+    const issues = [L.nowcast, ...(L.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_c != null)
       .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
     const issueLines = !issues.length ? [] : [
-      {pts: issues.map(r => [r.ready_utc, r.sat_obs_c]), stroke: "#0e9f6e", width: 2, label: "WRF 各版",
-       marks: issues.map(r => [r.ready_utc, r.sat_obs_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · ${n(r.sat_obs_c, 2)}°C`])},
+      {pts: issues.map(r => [r.ready_utc, r.sat_c]), stroke: "#0e9f6e", width: 2, label: "WRF 各版",
+       marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${n(r.sat_c, 2)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${n(r.sat_obs_c, 2)}°C` : ""}`])},
       {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: "#6e7781", dash: true, label: "已报最高"},
       {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: "#f778ba", width: 1, label: "市场均值"},
       ...(L.truth_c == null ? [] : [{pts: [[issues[0].ready_utc, L.truth_c], [issues[issues.length - 1].ready_utc, L.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
     const newest = issues[issues.length - 1];
-    const issueRow = issues.length < 2 ? "" : `<div class="trend-t" style="margin-top:8px" title="早版（约 10:00、10:30）、冻结版（11:10 起跑）、之后每半小时一张新云图重跑一次；每个点＝那一版报的今天最高温（已与当时报文最高取大），横轴＝出数时间；悬停看是哪一版、用哪张云图">今天 WRF 各版最高温 · 按出数时间（${issues.length} 版，最新 ${h(loc(newest.ready_utc))} ${n(newest.sat_obs_c)}°C）</div>
+    const issueRow = issues.length < 2 ? "" : `<div class="trend-t" style="margin-top:8px" title="早版（约 10:00、10:30）、冻结版（11:10 起跑）、之后每半小时一张新云图重跑一次；每个点＝那一版 WRF 自己算的今天最高温（不与报文取大），灰虚线＝出数时机场已报最高，横轴＝出数时间；悬停看是哪一版、用哪张云图">今天 WRF 各版最高温 · 按出数时间（${issues.length} 版，最新 ${h(loc(newest.ready_utc))} WRF ${n(newest.sat_c)}°C）</div>
       <div class="card">${sdTimeTempChart(issueLines, null, null, {h: 180})}</div>`;
     // Core only (user 2026-10-26 「信息还是太多，分散注意力，提炼核心信息即可」): today's issues on the
     // clock; who is nearest at the 11:30 moment (mean error, days won); the coming days; the last
@@ -23469,11 +23471,11 @@ function sdWrf(day){
   // frozen 11:10 one and the half-hour re-runs, beside the airport's maximum so far and the
   // market then, and the truth once in.
   const ISSUE_KIND = {early: "早版", frozen: "冻结版", update: "重跑"};
-  const issues = [W.nowcast_first, ...(W.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_obs_c != null)
+  const issues = [W.nowcast_first, ...(W.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_c != null)
     .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
   const issueLines = !issues.length ? [] : [
-    {pts: issues.map(r => [r.ready_utc, r.sat_obs_c]), stroke: SD_COL.WRF, width: 2, label: "WRF 各版",
-     marks: issues.map(r => [r.ready_utc, r.sat_obs_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${day.event_date}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · ${sdN(r.sat_obs_c, 2)}°C`])},
+    {pts: issues.map(r => [r.ready_utc, r.sat_c]), stroke: SD_COL.WRF, width: 2, label: "WRF 各版",
+     marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${day.event_date}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${sdN(r.sat_c, 2)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${sdN(r.sat_obs_c, 2)}°C` : ""}`])},
     {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: SD_COL.METAR, dash: true, label: "已报最高"},
     {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: SD_COL.MKT, width: 1, label: "市场均值"},
     ...(W.truth_c == null ? [] : [{pts: [[issues[0].ready_utc, W.truth_c], [issues[issues.length - 1].ready_utc, W.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
