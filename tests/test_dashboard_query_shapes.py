@@ -177,7 +177,8 @@ def test_the_snapshot_sweep_does_not_sort_two_gigabytes_to_find_a_maximum():
     scan stays on ``day_expiry_idx``, where ``event_date >=`` can seek.
     """
 
-    assert 'FROM basket_official_ws_snapshot WHERE event_date >= ?"' in SOURCE
+    # Since 2026-10-22 the read is one event day's window at a time.
+    assert '"SELECT station_id, observed_at, buckets_json FROM basket_official_ws_snapshot"' in SOURCE
     assert '" ORDER BY observed_at",' not in SOURCE
     # What the sweep keeps per bucket changed on 2026-10-03 (277443a0: the
     # normalised entry mid in place of the last bid); the read it does may
@@ -187,7 +188,7 @@ def test_the_snapshot_sweep_does_not_sort_two_gigabytes_to_find_a_maximum():
     conn.execute(
         "CREATE TABLE basket_official_ws_snapshot ("
         " snapshot_id TEXT PRIMARY KEY, station_id TEXT NOT NULL,"
-        " event_date TEXT NOT NULL, observed_at TEXT NOT NULL,"
+        " event_date TEXT NOT NULL, observed_at TEXT NOT NULL, state TEXT,"
         " quote_expires_at TEXT, buckets_json TEXT NOT NULL)"
     )
     conn.execute(
@@ -196,9 +197,9 @@ def test_the_snapshot_sweep_does_not_sort_two_gigabytes_to_find_a_maximum():
     )
     plan = _plan(
         conn,
-        "SELECT station_id, event_date, observed_at, buckets_json"
-        " FROM basket_official_ws_snapshot WHERE event_date >= ?",
-        "2026-08-15",
+        "SELECT station_id, observed_at, buckets_json FROM basket_official_ws_snapshot"
+        " WHERE event_date=? AND state='COMMITTED' AND observed_at>=? AND observed_at<?",
+        "2026-08-15", "2026-08-15T00:00:00Z", "2026-08-15T04:00:00Z",
     )
     assert "TEMP B-TREE" not in plan.upper(), plan
     assert "day_expiry_idx" in plan, plan

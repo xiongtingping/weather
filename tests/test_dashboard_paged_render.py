@@ -848,6 +848,26 @@ def test_the_truth_landing_caught_up_in_chunks_is_the_one_read(paged, monkeypatc
     assert whole["settled_station_days"] == 2   # the third day has no settled bucket yet
 
 
+def test_the_truth_landing_reads_a_closed_station_day_once(paged, monkeypatch) -> None:
+    """2026-10-27 (user 「把成员深度和真值落位改成增量读」): the 3-4 days after
+    the kept line were read whole every run; a station-day's record never
+    moves once its day closed, so the next run reads no snapshot for it."""
+
+    monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-08-20")
+    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 8, 23, 12, tzinfo=C.timezone.utc))
+    conn = _truth_landing_fixture()
+    saved = dict(C._PAGED_RUN)
+    C._PAGED_RUN.clear()
+    whole = C.collect_truth_landing(conn)
+    C._PAGED_RUN.update(saved)
+    assert C.collect_truth_landing(conn) == whole
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    assert C.collect_truth_landing(conn) == whole
+    conn.set_trace_callback(None)
+    assert not [sql for sql in seen if "basket_official_ws_snapshot" in sql and "buckets_json" in sql], seen
+
+
 def test_a_section_not_ready_serves_its_stand_in_and_caches_nothing(paged) -> None:
     def building(conn):
         raise C.SectionNotReady("halfway")

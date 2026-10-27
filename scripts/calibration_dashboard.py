@@ -1705,6 +1705,149 @@ def _seat_set_counts(conn: sqlite3.Connection) -> list[tuple[str, int]]:
     return sorted(counts.items())
 
 
+#: Per family and target day: rows, stations and the highest rowid, kept
+#: across paged runs by ``_member_depth_counts``.
+RENDER_MEMBER_DEPTH_DAYS = "_member_depth_days.json"
+#: Bumped when what a kept day holds changes.
+MEMBER_DEPTH_MEMO_VERSION = 1
+#: Target days older than this are counted again every run: the cold
+#: offload (scripts/ssot_cold_offload.py, MEMBER_RUN_HOT_DAYS = 90) moves
+#: member rows past its hot window out of the store, and that is the only
+#: path that removes one (the table's trigger refuses a DELETE otherwise).
+#: Five days inside the offload's line, so a day it is still taking from is
+#: in the recount.  Pinned against the offload's constant by the test.
+MEMBER_DEPTH_RECOUNT_OLDER_THAN_DAYS = 85
+
+
+def _member_depth_counts(conn: sqlite3.Connection) -> dict[str, tuple[int, int, int, int | None]]:
+    """Per family: rows, stations, target days and the highest rowid.
+
+    2026-10-27 (user 「把成员深度和真值落位改成增量读」): the counts walked
+    every family's whole slice of ``calibration_native_member_skill_idx``
+    -- ~10M entries -- every run, and on the swapping host one walk took 24
+    minutes, crossed the WAL yield line and never landed (the page sat 44
+    hours old).  The member table only grows, except the cold offload taking
+    days past its hot window, so a paged run keeps each family's per-day
+    rows and stations with the table's highest rowid at the time; the next
+    run adds the rows above that rowid and counts the days near the offload
+    line again.  A family is built whole the first time, and kept as soon
+    as it is, so a build cut short by a yield is not started over.
+    """
+
+    top = int(conn.execute(
+        "SELECT (SELECT COALESCE(MAX(rowid), 0) FROM calibration_native_ensemble_historical_member_run)"
+    ).fetchone()[0])
+    memo = _load_closed_readings(RENDER_MEMBER_DEPTH_DAYS) if _PAGED_RUN else {}
+    families: dict[str, Any] = (
+        dict(memo.get("families") or {})
+        if memo.get("version") == MEMBER_DEPTH_MEMO_VERSION else {}
+    )
+    recount_before = (
+        _now().date() - timedelta(days=MEMBER_DEPTH_RECOUNT_OLDER_THAN_DAYS)
+    ).isoformat()
+
+    def save() -> None:
+        if _PAGED_RUN:
+            _save_closed_readings(RENDER_MEMBER_DEPTH_DAYS, {
+                "version": MEMBER_DEPTH_MEMO_VERSION, "families": families,
+            })
+
+    def usable(entry: Any, transport: str) -> bool:
+        return (
+            isinstance(entry, dict) and entry.get("transport") == transport
+            and isinstance(entry.get("top_rowid"), int) and entry["top_rowid"] <= top
+            and isinstance(entry.get("days"), dict)
+        )
+
+    # The rows above each kept family's rowid: one rowid range per distinct
+    # kept rowid (families built in different runs hold different ones).
+    kept = {
+        system_id: families[system_id]
+        for system_id, _l, transport, _b in MEMBER_FAMILIES
+        if usable(families.get(system_id), transport)
+    }
+    for since in sorted({int(entry["top_rowid"]) for entry in kept.values()}):
+        if since >= top:
+            continue
+        for system_id, transport, day, station, qc, rows, last in conn.execute(
+            "SELECT ensemble_system_id, transport_provider_id, target_local_date,"
+            " station_id, qc_status, COUNT(*), MAX(rowid)"
+            " FROM calibration_native_ensemble_historical_member_run"
+            " WHERE rowid > ? AND rowid <= ? GROUP BY 1,2,3,4,5",
+            (since, top),
+        ):
+            entry = kept.get(str(system_id))
+            if entry is None or entry["transport"] != str(transport) or int(entry["top_rowid"]) != since:
+                continue
+            if str(qc) not in entry["qc"]:
+                entry["qc"].append(str(qc))
+            held = entry["days"].setdefault(str(day), [0, [], 0])
+            held[0] += int(rows)
+            if str(station) not in held[1]:
+                held[1].append(str(station))
+            held[2] = max(int(held[2]), int(last))
+    for system_id, entry in kept.items():
+        entry["top_rowid"] = top
+        # The days the offload may have taken from, counted again.
+        old = sorted(day for day in entry["days"] if day < recount_before)
+        for start in range(0, len(old), 200):
+            chunk = old[start:start + 200]
+            for day in chunk:
+                entry["days"].pop(day, None)
+            if not entry["qc"]:
+                continue
+            for day, station, rows, last in conn.execute(
+                "SELECT target_local_date, station_id, COUNT(*), MAX(rowid)"
+                " FROM calibration_native_ensemble_historical_member_run"
+                " INDEXED BY calibration_native_member_skill_idx"
+                " WHERE ensemble_system_id=? AND transport_provider_id=?"
+                f" AND qc_status IN ({','.join('?' * len(entry['qc']))})"
+                f" AND target_local_date IN ({','.join('?' * len(chunk))})"
+                " AND rowid <= ? GROUP BY 1,2",
+                (system_id, entry["transport"], *entry["qc"], *chunk, top),
+            ):
+                held = entry["days"].setdefault(str(day), [0, [], 0])
+                held[0] += int(rows)
+                held[1].append(str(station))
+                held[2] = max(int(held[2]), int(last))
+    if kept:
+        save()
+    # A family with nothing kept is read whole, and kept at once.
+    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
+        if system_id in kept:
+            continue
+        entry = {"transport": transport, "top_rowid": top, "qc": [], "days": {}}
+        for qc, day, station, rows, last in conn.execute(
+            "SELECT qc_status, target_local_date, station_id, COUNT(*), MAX(rowid)"
+            " FROM calibration_native_ensemble_historical_member_run"
+            " INDEXED BY calibration_native_member_skill_idx"
+            " WHERE ensemble_system_id=? AND transport_provider_id=? AND rowid <= ?"
+            " GROUP BY 1,2,3",
+            (system_id, transport, top),
+        ):
+            if str(qc) not in entry["qc"]:
+                entry["qc"].append(str(qc))
+            held = entry["days"].setdefault(str(day), [0, [], 0])
+            held[0] += int(rows)
+            if str(station) not in held[1]:
+                held[1].append(str(station))
+            held[2] = max(int(held[2]), int(last))
+        families[system_id] = entry
+        kept[system_id] = entry
+        save()
+    out: dict[str, tuple[int, int, int, int | None]] = {}
+    for system_id, entry in kept.items():
+        days = {day: held for day, held in entry["days"].items() if int(held[0]) > 0}
+        stations = {station for held in days.values() for station in held[1]}
+        out[system_id] = (
+            sum(int(held[0]) for held in days.values()),
+            len(stations),
+            len(days),
+            max((int(held[2]) for held in days.values()), default=None),
+        )
+    return out
+
+
 def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """Per family: how deep its training history is, and how many seats it won.
 
@@ -1725,16 +1868,10 @@ def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """
 
     seat_sets = _seat_set_counts(conn)
+    counts = _member_depth_counts(conn)
     depth: dict[str, dict[str, Any]] = {}
-    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
-        rows, stations, days, last_rowid = conn.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT station_id),"
-            " COUNT(DISTINCT target_local_date), MAX(rowid)"
-            " FROM calibration_native_ensemble_historical_member_run"
-            " INDEXED BY calibration_native_member_skill_idx"
-            " WHERE ensemble_system_id=? AND transport_provider_id=?",
-            (system_id, transport),
-        ).fetchone()
+    for system_id, _label, _transport, _backfillable in MEMBER_FAMILIES:
+        rows, stations, days, last_rowid = counts[system_id]
         latest = None
         if last_rowid is not None:
             found = conn.execute(
@@ -5859,6 +5996,18 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             kept = {}
         kept_through = str(kept.get("through") or "")
         records = dict(kept.get("records") or {})
+        kept_keys = len(records)
+
+        # A station-day already read is not read again (user 2026-10-27
+        # 「把成员深度和真值落位改成增量读」): its record is the P0 decided by
+        # the day's local midnight and the book over the four hours after,
+        # and the day is closed a full day later, so a record never moves
+        # once written.  Every run used to read the 3-4 days after the kept
+        # line whole -- each day's snapshots at ~20 KB, 21 minutes on the
+        # swapping host, past the WAL yield line, 34 hours stale.  Now a run
+        # reads only the station-days that closed since the last one.
+        def unread_and_closed(station: str, event_date: str) -> bool:
+            return f"{station}|{event_date}" not in records and day_closed(station, event_date)
         read_from = (
             max(TRUTH_LANDING_SINCE, _next_iso_day(kept_through))
             if kept_through else TRUTH_LANDING_SINCE
@@ -5884,7 +6033,7 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             )
             try:
                 records.update(_truth_landing_records(
-                    source, day_closed, read_from, chunk_until,
+                    source, unread_and_closed, read_from, chunk_until,
                 ))
             finally:
                 if source is not conn:
@@ -5895,15 +6044,25 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             raise SectionNotReady(
                 f"truth_landing kept through {chunk_until} of {keep_through}"
             )
-        records.update(_truth_landing_records(conn, day_closed, read_from))
-        if keep_through > kept_through:
+        # A day at a time, each kept as it lands, so a read cut short at the
+        # WAL line keeps the days it finished.
+        day = date.fromisoformat(read_from)
+        last = now.date()
+        while day <= last:
+            before = len(records)
+            records.update(_truth_landing_records(
+                conn, unread_and_closed, day.isoformat(), day.isoformat(),
+            ))
+            if len(records) > before:
+                _save_closed_readings(RENDER_TRUTH_LANDING_RECORDS, {
+                    "code": code, "through": kept_through, "records": records,
+                })
+            day += timedelta(days=1)
+        if keep_through > kept_through or len(records) > kept_keys:
             _save_closed_readings(RENDER_TRUTH_LANDING_RECORDS, {
                 "code": code,
-                "through": keep_through,
-                "records": {
-                    key: record for key, record in records.items()
-                    if key.split("|", 1)[1] <= keep_through
-                },
+                "through": max(keep_through, kept_through),
+                "records": records,
             })
     else:
         history = _history_conn(conn, ("basket_official_ws_snapshot", "basket_probability_envelope"))
