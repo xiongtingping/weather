@@ -124,6 +124,8 @@ def test_a_spent_budget_serves_the_last_page_and_says_so(paged, monkeypatch) -> 
     # Past its lifetime, and the run's budget is gone.
     blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
     blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    # A read that costs real time: one of seconds still fits (next test).
+    blob["build_sec"], blob["cost_history"] = 60.0, []
     (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
     monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", -1.0)
     C._SECTION_CACHE_LOG.clear()
@@ -134,6 +136,23 @@ def test_a_spent_budget_serves_the_last_page_and_says_so(paged, monkeypatch) -> 
     assert entry["stale"] is True and entry["reused"] is True
     assert entry["stale_reason"] == "budget"
     assert C._PAGED_RUN["stale"] == {"slow_moving": "budget"}
+
+
+def test_a_section_of_seconds_reads_past_a_spent_budget(paged, monkeypatch) -> None:
+    """2026-10-27: 0-3 s sections sat two hours overdue behind "budget"."""
+
+    calls: list[str] = []
+    C._cached_section("slow_moving", _collector(calls, "old"), None)
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    blob["build_sec"], blob["cost_history"] = 1.0, []
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
+    monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", -1.0)
+    C._SECTION_CACHE_LOG.clear()
+    value = C._cached_section("slow_moving", _collector(calls, "new"), None)
+    assert calls == ["old", "new"]
+    assert value["value"] == "new"
+    assert "slow_moving" not in C._PAGED_RUN["stale"]
 
 
 def test_a_page_is_never_served_across_a_code_change(paged, monkeypatch) -> None:
@@ -347,7 +366,7 @@ def test_the_every_run_sections_leave_room_for_themselves(paged, monkeypatch) ->
     C._cached_section("slow_moving", _collector(calls, "old"), None)
     blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
     blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
-    blob["build_sec"] = 10.0
+    blob["build_sec"], blob["cost_history"] = 10.0, []
     (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
     value = C._cached_section("slow_moving", _collector(calls, "new"), None)
     assert value["value"] == "old", "live_days' 500 s is spoken for"
@@ -474,6 +493,9 @@ def test_a_page_whose_inputs_moved_is_still_a_page(paged, monkeypatch) -> None:
     calls: list[str] = []
     collector = _collector(calls, "yesterday")
     C._cached_section("slow_moving", collector, None, _salt="2026-09-23")
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["build_sec"], blob["cost_history"] = 60.0, []
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
     monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", -1.0)
     value = C._cached_section("slow_moving", collector, None, _salt="2026-09-24")
     assert value["value"] == "yesterday" and calls == ["yesterday"]

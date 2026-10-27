@@ -13942,6 +13942,14 @@ RENDER_SOFT_BUDGET_SEC = float(
 #: were all killed at 1,500 s (regional 792 s and 691 s against its usual
 #: 20-60 s, members 340 s), wrote nothing, and the whole board kept the
 #: 10:54Z page: every lamp and every section frozen for three hours.
+#: A page-backed section that costs no more than this reads even once the
+#: soft budget is spent (the hard deadline still stops it).  2026-10-27: on a
+#: host deep in swap the every-run sections alone took the whole 1,200 s, so
+#: "budget" served scorecard_salt, stations_without_p0 and
+#: uncertified_systems -- 0-3 s reads -- from 08:04Z pages for two hours and
+#: more, each lamp flagged overdue, while the time they would have taken was
+#: seconds.
+PAGE_FITS_ANYWAY_SEC = 5.0
 RENDER_HARD_DEADLINE_SEC = float(
     os.environ.get("PM_DASHBOARD_RENDER_HARD_DEADLINE_SEC", "1380")
 )
@@ -15291,7 +15299,10 @@ def _cached_section_value(
             RENDER_SOFT_BUDGET_SEC - _paged_elapsed() - _every_run_reserve_sec()
         )
         expected = _page_cost(page or {}, now)
-        if page is not None and expected > remaining:
+        if (
+            page is not None and expected > remaining
+            and expected > PAGE_FITS_ANYWAY_SEC
+        ):
             return _serve_stale_page(name, page, ttl, page_age, "budget", page_inputs_moved)
         # No page at all and no room for what it cost last time: a section
         # that declared what to show instead shows it, rather than reading
