@@ -3880,9 +3880,15 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
     heads: dict[tuple[str, str], dict[str, tuple]] = defaultdict(dict)
     zones: dict[tuple[str, str], str] = {}
     first_rowid: dict[tuple[str, str], int] = {}
-    for rowid, station, day, decided, probs, ords, running, zone in (conn.execute(
-        "SELECT rowid, station_id, event_date, decision_at_utc, probabilities_json,"
-        " bucket_ordinals_json, json_extract(lineage_json,'$.metar_trajectory_running_high_c'),"
+    # Two passes (2026-10-27, user 「打前端各板块超期问题」): the heads are picked
+    # off the covering index first and only their rows are read whole.  P1
+    # rows went from ~8k a day to 28k on 10-26 while the heads stayed near
+    # 7.7k, and reading every row's JSON cold held this section past the WAL
+    # yield line (2,159 minutes stale).  Same index, same order, same tie
+    # rule as reading the rows in one pass.
+    head_rowids: dict[tuple[str, str], dict[str, tuple[str, int]]] = defaultdict(dict)
+    for rowid, station, day, decided, zone in (conn.execute(
+        "SELECT rowid, station_id, event_date, decision_at_utc,"
         " settlement_timezone FROM basket_probability_envelope"
         " WHERE state='COMMITTED' AND stage='P1' AND event_date BETWEEN ? AND ?",
         (read_from, str(latest)),
@@ -3891,11 +3897,26 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
         if key not in truth or key in reused:
             continue
         second = str(decided)[:19]
-        held = heads[key].get(second)
+        held = head_rowids[key].get(second)
         if held is None or str(decided) > held[0]:
-            heads[key][second] = (str(decided), probs, ords, running)
+            head_rowids[key][second] = (str(decided), int(rowid))
         zones[key] = str(zone or "UTC")
         first_rowid.setdefault(key, rowid)
+    wanted = [rowid for by_second in head_rowids.values() for _d, rowid in by_second.values()]
+    bodies: dict[int, tuple] = {}
+    for start in range(0, len(wanted), 500):
+        chunk = wanted[start:start + 500]
+        for rowid, probs, ords, running in conn.execute(
+            "SELECT rowid, probabilities_json, bucket_ordinals_json,"
+            " json_extract(lineage_json,'$.metar_trajectory_running_high_c')"
+            " FROM basket_probability_envelope WHERE rowid IN (" + ",".join("?" * len(chunk)) + ")",
+            chunk,
+        ):
+            bodies[int(rowid)] = (probs, ords, running)
+    for key, by_second in head_rowids.items():
+        for second, (decided, rowid) in by_second.items():
+            if rowid in bodies:
+                heads[key][second] = (decided, *bodies[rowid])
     days: list[dict[str, Any]] = []
     for key, by_second in heads.items():
         try:
