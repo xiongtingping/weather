@@ -644,6 +644,23 @@ def test_a_section_that_yields_is_backed_off_like_a_killed_one(pages, monkeypatc
     assert [n for _o, n, _c in C.research_due(specs, now)] == ["skill", "member_depth"]
 
 
+def test_the_wake_check_counts_what_a_run_would_compute_and_records_nothing(pages, monkeypatch) -> None:
+    """2026-10-27: the sweep wakes every 300 s and asks ``--research-due``
+    first; it must answer as the run would, and take no oversize turn."""
+
+    now = datetime(2026, 10, 27, 4, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "_now", lambda: now)
+    monkeypatch.setattr(C, "_live_specs", lambda _raw: {"huge": {}})
+    big = C.RESEARCH_RUN_BUDGET_SEC + 1
+    monkeypatch.setattr(C, "research_due", lambda _specs, _now: [(9.0, "huge", big)])
+    assert C.research_has_work() == 1                      # ripe: a run would take it
+    assert not (pages / C.RESEARCH_OVERSIZE_FILE).exists()  # ... but asking took no turn
+    C._save_closed_readings(C.RESEARCH_OVERSIZE_FILE, {"tried": {"huge": now.isoformat()}})
+    assert C.research_has_work() == 0                      # tried just now: nothing to do
+    monkeypatch.setattr(C, "research_due", lambda _specs, _now: [])
+    assert C.research_has_work() == 0
+
+
 def test_the_child_entry_computes_one_section_and_reports(pages, monkeypatch, capsys) -> None:
     spec = {"module": "calibration_dashboard", "collector": "collect_chain"}
     monkeypatch.setattr(C, "_load_closed_readings", lambda _name: {"scorecard": spec})

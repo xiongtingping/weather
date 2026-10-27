@@ -34,6 +34,17 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 }
 
 cd "$PROJECT_DIR"
+# Woken every 300 s (launchd StartInterval; 2026-10-27, user 「Fix the research
+# render's scheduling」).  On 3,600 s launchd dropped every start that found
+# the last run still going -- each run waits out the page render and the
+# reader turn -- so runs came 70-110 minutes apart while 20-odd pages sat
+# overdue.  A wake first asks the board, off its section-cache files alone,
+# whether anything is due; nothing due exits here, silently, before any wait
+# or reader turn.  A failed answer counts as work.
+DUE="$(run_with_timeout 120 "" nice -n 10 "$PY" scripts/calibration_dashboard.py --research-due 2>/dev/null | tail -n 1 || true)"
+if [ "$DUE" = "0" ]; then
+  exit 0
+fi
 PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --compute-pages}"
 # Wait the page render out rather than skip the hour.  The page render runs
 # 20-25 minutes, starts every 30 minutes from its previous start and never

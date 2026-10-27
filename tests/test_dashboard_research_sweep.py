@@ -35,8 +35,10 @@ def _project(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (project / "scripts" / "calibration_dashboard.py").write_text(
-        "import sys, pathlib\n"
+        "import os, sys, pathlib\n"
         "here = pathlib.Path(__file__).resolve().parents[1]\n"
+        "if '--research-due' in sys.argv:\n"
+        "    print(os.environ.get('STUB_RESEARCH_DUE', '2')); raise SystemExit(0)\n"
         "(here / 'data' / 'called').write_text(' '.join(sys.argv[1:]))\n"
         "print('research render: stub computed in 0s')\n",
         encoding="utf-8",
@@ -63,6 +65,30 @@ def test_it_asks_the_board_for_one_research_section(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (project / "data" / "called").read_text() == "--refresh-research"
     assert "] done" in result.stdout
+
+
+def test_a_wake_with_nothing_due_exits_before_any_wait(tmp_path: Path) -> None:
+    # 2026-10-27: woken every 300 s, a wake with nothing due reads nothing,
+    # waits for nothing and says nothing.
+    project = _project(tmp_path)
+    marker = f"fake-page-render-{os.getpid()}-{time.time_ns()}"
+    page_render = subprocess.Popen(["bash", "-c", f"exec -a {marker} sleep 30"])
+    os.environ["STUB_RESEARCH_DUE"] = "0"
+    try:
+        time.sleep(0.3)
+        result = _run(project, marker, wait_sec=20)
+    finally:
+        os.environ.pop("STUB_RESEARCH_DUE", None)
+        page_render.kill()
+        page_render.wait()
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert not (project / "data" / "called").exists()
+
+
+def test_the_wake_interval_is_five_minutes() -> None:
+    plist = (ROOT / "launchd" / "com.weather.dashboard_research_render.plist").read_text(encoding="utf-8")
+    assert "<key>StartInterval</key>\n  <integer>300</integer>" in plist
 
 
 def test_it_waits_for_an_oversized_wal_to_be_truncated(tmp_path: Path) -> None:

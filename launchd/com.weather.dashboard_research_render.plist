@@ -17,9 +17,13 @@
        now serves from their pages.  A reader of the store, a writer of one
        section-cache file; it does not start while the page render runs and
        skips a start with the WAL past the resident's line.  The sweep
-       carries its own 3,300 s deadline. -->
+       carries its own 3,300 s deadline.  Woken every 300 s since
+       2026-10-27 (「Fix the research render's scheduling」): on 3,600 s
+       launchd dropped each start that found the last run still going, and
+       runs came 70-110 minutes apart; a wake with nothing due exits at once
+       (calibration_dashboard.py --research-due, no SSOT read). -->
   <key>StartInterval</key>
-  <integer>3600</integer>
+  <integer>300</integer>
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>

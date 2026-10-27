@@ -14886,6 +14886,57 @@ def _spec_takes_conn(spec: Mapping[str, Any], collector: Any) -> bool:
 RESEARCH_WAL_WAIT_SEC = float(os.environ.get("PM_DASHBOARD_RESEARCH_WAL_WAIT_SEC", "300"))
 
 
+def _research_plan(
+    specs: Mapping[str, Any], *, commit: bool,
+) -> tuple[list[tuple[float, str, float]], str]:
+    """The sections this research run computes, or why it computes none.
+
+    ``commit`` records the oversize section a run takes; ``research_has_work``
+    asks the same question without it.
+    """
+
+    due = research_due(specs, _now())
+    if not due:
+        return [], "research render: nothing due"
+    # Sections that fit a run go first, most overdue first; a section larger
+    # than the whole budget gets a run to itself once its turn comes round.
+    oversize = [d for d in due if d[2] > RESEARCH_RUN_BUDGET_SEC]
+    if oversize:
+        tried = dict(_load_closed_readings(RESEARCH_OVERSIZE_FILE).get("tried") or {})
+        now = _now()
+        def _since(name: str) -> float:
+            at = _parse_utc_or_none(tried.get(name))
+            return float("inf") if at is None else (now - at).total_seconds()
+        ripe = [d for d in oversize if _since(d[1]) >= RESEARCH_OVERSIZE_EVERY_SEC]
+        fits = [d for d in due if d[2] <= RESEARCH_RUN_BUDGET_SEC]
+        if ripe:
+            if commit:
+                tried[ripe[0][1]] = now.isoformat().replace("+00:00", "Z")
+                _save_closed_readings(RESEARCH_OVERSIZE_FILE, {"tried": tried})
+            return ripe[:1], ""
+        if fits:
+            return fits, ""
+        return [], "research render: only oversize sections due, none ripe yet"
+    return due, ""
+
+
+def research_has_work() -> int:
+    """``--research-due``: how many sections a research run would compute
+    now, read off the section-cache files alone (no SSOT).
+
+    2026-10-27 (user 「Fix the research render's scheduling」): the sweep ran
+    on a 3,600 s StartInterval, and launchd drops a start while the previous
+    run is still going, so with each run waiting out the page render and the
+    reader turn it started every 70-110 minutes.  It now wakes every 300 s and
+    asks this first: nothing due exits at once, so a wake costs one
+    interpreter start and takes no reader turn.
+    """
+
+    specs = _live_specs(_load_closed_readings(RENDER_SECTION_SPECS))
+    due, _idle = _research_plan(specs, commit=False)
+    return len(due)
+
+
 def refresh_research_section(db: Path) -> str:
     """Refresh the overdue pages the page render cannot, most overdue first.
 
@@ -14903,28 +14954,9 @@ def refresh_research_section(db: Path) -> str:
 
     _note_research_death()
     specs = _live_specs(_load_closed_readings(RENDER_SECTION_SPECS))
-    due = research_due(specs, _now())
-    if not due:
-        return "research render: nothing due"
-    # Sections that fit a run go first, most overdue first; a section larger
-    # than the whole budget gets a run to itself once its turn comes round.
-    oversize = [d for d in due if d[2] > RESEARCH_RUN_BUDGET_SEC]
-    if oversize:
-        tried = dict(_load_closed_readings(RESEARCH_OVERSIZE_FILE).get("tried") or {})
-        now = _now()
-        def _since(name: str) -> float:
-            at = _parse_utc_or_none(tried.get(name))
-            return float("inf") if at is None else (now - at).total_seconds()
-        ripe = [d for d in oversize if _since(d[1]) >= RESEARCH_OVERSIZE_EVERY_SEC]
-        fits = [d for d in due if d[2] <= RESEARCH_RUN_BUDGET_SEC]
-        if ripe:
-            tried[ripe[0][1]] = now.isoformat().replace("+00:00", "Z")
-            _save_closed_readings(RESEARCH_OVERSIZE_FILE, {"tried": tried})
-            due = ripe[:1]
-        elif fits:
-            due = fits
-        else:
-            return "research render: only oversize sections due, none ripe yet"
+    due, idle = _research_plan(specs, commit=True)
+    if idle:
+        return idle
     started = time.perf_counter()
     done: list[str] = []
     _RESEARCH_GAP_WAIT_LEFT[:] = [RENDER_GAP_WAIT_BUDGET_SEC]
@@ -27215,6 +27247,11 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--research-due",
+        action="store_true",
+        help="print how many sections a research run would compute now (reads no SSOT)",
+    )
+    parser.add_argument(
         "--refresh-health",
         action="store_true",
         help=(
@@ -27245,6 +27282,9 @@ def main() -> int:
     PAGE_READ_ONLY = bool(args.html_out) and SECTION_CACHE_ENABLED
     if args.reinflate:
         print(reinflate(args.reinflate, renderer=render_html))
+        return 0
+    if args.research_due:
+        print(research_has_work())
         return 0
     database = args.db.expanduser().resolve(strict=True)
     if args.research_section:
