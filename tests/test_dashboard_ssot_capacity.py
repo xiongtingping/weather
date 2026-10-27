@@ -205,3 +205,21 @@ def test_the_wal_reaches_the_lamp(tmp_path, monkeypatch):
     assert 'includes("target_wal_bytes_exceeded")' in page
     assert 'includes("target_wal_bytes_growing")' in page
     assert "S.wal_bytes" in page
+
+
+def test_the_day_count_never_scans_a_table():
+    """2026-10-27: ``MIN(rowid), MAX(rowid)`` in one select list scans the
+    whole table (SQLite's min/max shortcut is for a lone aggregate); cold on
+    the 2.4M-row ws snapshots it held the section 18 minutes, past the WAL
+    yield line, and the page sat 48 hours stale."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE t (observed_at TEXT)")
+    conn.executemany("INSERT INTO t VALUES (?)", [(f"2026-10-{d:02d}T00:00:00Z",) for d in range(1, 28)])
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    assert C._rows_since_by_rowid(conn, "t", "observed_at", "2026-10-26T00:00:00Z") == 2
+    conn.set_trace_callback(None)
+    for sql in {s for s in seen if s.lstrip().upper().startswith("SELECT")}:
+        plan = " ".join(str(row[3]) for row in conn.execute("EXPLAIN QUERY PLAN " + sql))
+        assert "SCAN t" not in plan, (sql, plan)

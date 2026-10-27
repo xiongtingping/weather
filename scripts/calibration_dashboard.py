@@ -4760,7 +4760,14 @@ def _rows_since_by_rowid(conn: sqlite3.Connection, table: str, column: str, sinc
     from it to the newest row is the count.
     """
 
-    lo, hi = conn.execute(f'SELECT MIN(rowid), MAX(rowid) FROM "{table}"').fetchone()
+    # Two scalar subqueries, not ``MIN(rowid), MAX(rowid)`` in one select
+    # list: SQLite takes the min/max shortcut only for a lone aggregate, and
+    # the pair scans the whole table (2026-10-27, user 「打前端各板块超期问题」:
+    # ssot_capacity read 18 minutes cold, hit the WAL yield line and sat
+    # 48 hours stale; market_registry.py carries the same note).
+    lo, hi = conn.execute(
+        f'SELECT (SELECT MIN(rowid) FROM "{table}"), (SELECT MAX(rowid) FROM "{table}")'
+    ).fetchone()
     if hi is None:
         return 0
 
