@@ -23333,11 +23333,40 @@ function sdChain(day){
     : "十家确定性逐家去偏后的中位数 F，与各家集合一起进 P0 的分布回归（宪章 281）";
   const det = sdDeterministic(day, true);
   const p = sdProbabilityCards(day, true);
-  const side = [sdMemberBayes(day), sdD0(day), sdMos(day), sdWrf(day)].filter(Boolean);
+  const side = [sdMemberBayes(day), sdD0(day), sdMos(day), sdWrf(day), sdBestMatch(day)].filter(Boolean);
   return `<div class="sd-rel-h">生产链 <small>车道读的概率：P1 有就读 P1，没有读 P0</small></div>
     <div class="sd-chain${det ? "" : " sd-chain-2"}">${det ? `<div class="sd-four sd-chain-in">${det}</div>${arrow(fWord, fTip)}` : ""}${p.P0 || ""}${arrow("× 实况", "P1＝P0 × 实况报文似然，再施已报最高的下界（宪章 150/283）")}${p.P1 || ""}</div>
     ${side.length ? `<div class="sd-rel-h">旁证 <small>只读，不进生产；都与 P1、市场比</small></div>
-    <div class="sd-four${side.length === 4 ? "" : " sd-three"}">${side.join("")}</div>` : ""}`;
+    <div class="sd-four${side.length === 4 ? "" : side.length === 5 ? " sd-five" : " sd-three"}">${side.join("")}</div>` : ""}`;
+}
+
+// best_match beside the other read-only estimates (user 2026-10-27 「这里增加一张：best_match卡」):
+// Open-Meteo's own model pick, pulled every hour (best_match_hourly) -- the latest run's day
+// maximum, against P1 and the market; the run one day earlier (the MOS's base) and the change;
+// the hourly curve of both runs with the reports.  Enters no layer.
+function sdBestMatch(day){
+  const rows = ((day.hourly_sky || {}).rows) || [];
+  const peak = k => { const v = rows.map(r => (r.forecast || {})[k]); return v.length && v.every(x => x != null) ? Math.max(...v) : null; };
+  const now = peak("temp_c"), d1 = peak("temp_c_d1");
+  const title = "best_match", tag = "只读 · Open-Meteo", color = "#e36209";
+  if(now == null) return rows.length ? sdModelCard({title, tag, color, empty: "best_match 还没有"}) : "";
+  const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
+  const t0 = sdDayStartMs(day.event_date), at = h => new Date(t0 + h * 3600e3).toISOString();
+  const fetched = (day.hourly_sky || {}).fetched_at_utc;
+  const tz = ((typeof SD !== "undefined" && SD.data) || {}).timezone;
+  const loc = t => t ? new Intl.DateTimeFormat("en-GB", {timeZone: tz || undefined, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)) : "—";
+  const lines = [
+    {pts: rows.filter(r => (r.forecast || {}).temp_c != null).map(r => [at(r.hour), r.forecast.temp_c]), stroke: color, width: 2, label: "最新一轮"},
+    {pts: rows.filter(r => (r.forecast || {}).temp_c_d1 != null).map(r => [at(r.hour), r.forecast.temp_c_d1]), stroke: color, dash: true, label: "提前 1 天"},
+    {pts: rows.filter(r => r.obs && r.obs.temp_c != null).map(r => [at(r.hour), r.obs.temp_c]), stroke: SD_COL.METAR, width: 1.5, label: "报文实况"}];
+  const trend = `<div class="sd-d0-trend">${sdTimeTempChart(lines, null, null, {day: day.event_date, ...sdAxisOpts(day)})}</div>`;
+  const rev = d1 == null ? null : now - d1;
+  return sdModelCard({title, tag, color,
+    value: `${sdN(now, 1)}°C`, valueTip: "Open-Meteo best_match 最新一轮逐小时预报的当天最高（整点最大值）",
+    cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? now - bel.mean : null, "best_match 最新减当前服务信念均值"], ["比市场", mk == null ? null : now - mk, "best_match 最新减市场均值"]],
+    sub: `提前 1 天 ${sdN(d1, 1)}°C${rev == null ? "" : ` · 变化 ${sdSg(rev, 1)}`} · ${loc(fetched)} 拉取`,
+    trend,
+    foot: "Open-Meteo 自动选模型（不注明来源模型）；每小时拉一次；提前 1 天那轮是 MOS 的基准；只读，不进任何层"});
 }
 
 function sdDeterministic(day, chain){
