@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import hashlib
 import math
+import os
 import re
 import sqlite3
 import sys
@@ -1113,6 +1114,11 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
 
 FORECAST_CACHE_SECONDS = 1800.0
 CLOSED_DAY_CACHE_SECONDS = 6 * 3600.0
+# Every station's best_match pulled once an hour (user 2026-10-27 「best_match每个小时都要去拉取一次」,
+# bayes_basket_target/best_match_hourly.py): each pull is kept on disk, so a board opened within
+# the hour reads it instead of asking again.
+BEST_MATCH_DIR = ROOT / "data" / "runtime" / "best_match_hourly"
+BEST_MATCH_DISK_SECONDS = 3600.0
 _FORECAST_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
 # The forecast call shares the egress address's daily allowance with the
@@ -1458,7 +1464,12 @@ def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
     return None if row is None else (float(row[0]), float(row[1]))
 
 
-def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, Any]:
+def _best_match_snapshot(key: tuple[str, str]) -> Path:
+    return BEST_MATCH_DIR / f"{key[0]}_{key[1]}.json"
+
+
+def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str, *, force: bool = False) -> dict[str, Any]:
+    """``force``: ask Open-Meteo whatever the caches hold (the hourly pull)."""
     import ssl  # noqa: PLC0415
     import time  # noqa: PLC0415
     from urllib.parse import urlencode  # noqa: PLC0415
@@ -1472,8 +1483,17 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     hit = _FORECAST_CACHE.get(key)
     # A closed local day (yesterday's column) no longer changes: kept six hours.
     ttl = CLOSED_DAY_CACHE_SECONDS if day < datetime.now(ZoneInfo(tz)).date().isoformat() else FORECAST_CACHE_SECONDS
-    if hit and time.monotonic() - hit[0] < ttl:
+    if hit and not force and time.monotonic() - hit[0] < ttl:
         return hit[1]
+    if not force:
+        try:
+            disk = json.loads(_best_match_snapshot(key).read_text(encoding="utf-8"))
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(str(disk["fetched_at_utc"]).replace("Z", "+00:00"))).total_seconds()
+            if disk.get("available") and 0 <= age < max(ttl, BEST_MATCH_DISK_SECONDS):
+                _FORECAST_CACHE[key] = (time.monotonic(), disk)
+                return disk
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
     now_iso = datetime.now(timezone.utc).isoformat()
     if _DAY_REFUSED_UNTIL and now_iso < _DAY_REFUSED_UNTIL[0]:
         return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
@@ -1531,6 +1551,14 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
         out = {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
     if out.get("available"):
         _FORECAST_CACHE[key] = (time.monotonic(), out)
+        try:
+            BEST_MATCH_DIR.mkdir(parents=True, exist_ok=True)
+            snap = _best_match_snapshot(key)
+            tmp = snap.with_suffix(f".{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(out), encoding="utf-8")
+            tmp.replace(snap)
+        except OSError:
+            pass
     return out
 
 
