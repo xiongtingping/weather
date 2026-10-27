@@ -172,3 +172,20 @@ def test_completion_and_boot_both_read_the_run_outcome(daemon) -> None:
     )
 
 
+def test_a_run_refused_at_the_wal_ceiling_retries_in_minutes(
+    daemon, tmp_path
+) -> None:
+    # 2026-10-27 settlement_truth: the guard raised before any write, the
+    # receipt said ``failed``, and the lane sat out three hours.
+    result = daemon.run_hosted_sweep(
+        _script(
+            tmp_path,
+            'echo "bayes_basket_target.resource_bounds.ResourceBoundError: '
+            'target_database_wal_bytes_exceeded" >&2\nexit 1',
+        ),
+        30.0,
+    )
+    assert result["state"] == daemon.HOSTED_SWEEP_WRITE_BLOCKED_STATE
+    assert daemon.hosted_sweep_interval_after(result, 10800.0) == (
+        daemon.HOSTED_SWEEP_CONTINUATION_DELAY_SEC
+    )

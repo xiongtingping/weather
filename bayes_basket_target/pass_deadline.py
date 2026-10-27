@@ -130,6 +130,25 @@ def announce_write_blocked(detail: str) -> None:
     print(HOSTED_SWEEP_WRITE_BLOCKED_MARKER)
 
 
+#: The SSOT's WAL ceiling (``resource_bounds.MAX_TARGET_WAL_BYTES``), raised
+#: before a pass writes anything.  It is a moment, not a defect: the WAL is
+#: pinned by a long reader and the resident truncates it once the reader lets
+#: go, so a pass refused here is blocked the way a busy write lock blocks it.
+_WAL_CEILING_TAIL = "target_database_wal_bytes_exceeded"
+
+
+def output_names_wal_ceiling(text: str) -> bool:
+    """Did a dead sweep die on the SSOT's WAL ceiling?
+
+    2026-10-27: settlement_truth was refused at 08:19Z on a WAL over 512 MiB,
+    recorded as ``failed``, and so waited its whole three-hour interval --
+    truth for every closed day held back -- while the WAL was back under
+    200 MiB within the hour.
+    """
+
+    return _WAL_CEILING_TAIL in str(text or "")
+
+
 def writer_lease_seconds(default: float) -> float:
     """``default`` clamped to the writer lease the resident granted, if any.
 

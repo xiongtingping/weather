@@ -108,6 +108,7 @@ from bayes_basket_target.database import DEFAULT_TARGET_DB
 from bayes_basket_target.pass_deadline import (
     HOSTED_SWEEP_WRITE_BLOCKED_MARKER,
     WRITER_LEASE_ENV,
+    output_names_wal_ceiling,
 )
 from bayes_basket_target.network_retry import (
     HOSTED_SWEEP_NETWORK_RETRY_MARKER,
@@ -1707,6 +1708,10 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
             if (
                 returncode == 0
                 and HOSTED_SWEEP_WRITE_BLOCKED_MARKER in markers
+            ) or (
+                # Refused at the WAL ceiling: blocked, not broken, so it is
+                # due again in minutes rather than a whole interval.
+                returncode != 0 and output_names_wal_ceiling(tail)
             ):
                 state_text = HOSTED_SWEEP_WRITE_BLOCKED_STATE
                 continues = False
