@@ -1264,3 +1264,38 @@ def test_a_batch_held_past_the_lock_target_halves_the_next(
     move = {m["table"]: m for m in receipt["moves"]}[REGIME]
     assert move["state"] == "moved" and move["batches"] >= 1
     assert move["min_batch_rows"] == 2  # the next batch after a long hold: 4 -> 2
+
+
+def test_planning_takes_half_the_budget_and_the_rest_go_first_next_run(
+    store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """2026-10-27: on a swapping host the plans alone took the whole 2,400 s
+    (1.39 GiB planned, 0.01 GiB moved) and the store reached its ceiling.
+    Past its planning share a run moves what it planned; the tables it did
+    not reach are planned first next run."""
+
+    first, second = off.POLICIES[0], off.POLICIES[1]
+    planned: list[str] = []
+    moved: list[str] = []
+
+    def plan(_conn, policy, **_kwargs):
+        planned.append(policy.table)
+        return off.TablePlan(policy=policy, cutoff="2026-01-01", candidates=[1], estimated_bytes=1)
+
+    def move(*, plan, **_kwargs):
+        moved.append(plan.policy.table)
+        return {"table": plan.policy.table, "state": "moved", "moved_rows": 1, "moved_bytes": 1}
+
+    monkeypatch.setattr(off, "plan_table", plan)
+    monkeypatch.setattr(off, "move_table", move)
+    monkeypatch.setattr(off, "PLAN_BUDGET_SHARE", 0.0)
+    receipt = _run(store, cold, tmp_path, apply=True, budget_seconds=100.0,
+                   policies=(first, second))
+    assert planned == [first.table] and moved == [first.table]
+    states = {row["table"]: row["state"] for row in receipt["tables"]}
+    assert states == {first.table: "planned", second.table: "not_planned_budget"}
+    planned.clear()
+    moved.clear()
+    _run(store, cold, tmp_path, apply=True, budget_seconds=100.0,
+         policies=(first, second), plan_first=[second.table])
+    assert planned == [second.table] and moved == [second.table]

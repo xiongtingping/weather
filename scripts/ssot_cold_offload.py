@@ -2348,6 +2348,11 @@ def _append_manifest(path: Path, row: Mapping[str, Any]) -> None:
 WAL_SETTLE_MAX_SECONDS = 180.0
 
 
+#: The share of an applied run's budget its planning may take before the
+#: moves start on what is planned.
+PLAN_BUDGET_SHARE = 0.5
+
+
 @dataclass
 class MoveBudget:
     deadline: float | None
@@ -2661,8 +2666,13 @@ def run(
     policies: Sequence[TablePolicy] = POLICIES,
     sleep: Callable[[float], None] = time.sleep,
     row_days_cache: Path | None = None,
+    plan_first: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Plan every selected table; with ``apply``, move what the plan names."""
+    """Plan every selected table; with ``apply``, move what the plan names.
+
+    ``plan_first``: tables the previous run left unplanned when its planning
+    share ran out, planned ahead of the registry order this time.
+    """
 
     started = time.monotonic()
     moment = as_of or _utc_now()
@@ -2678,6 +2688,8 @@ def run(
     }
     by_table = {policy.table: policy for policy in policies}
     selected = [by_table[name] for name in tables] if tables else list(policies)
+    first = set(plan_first)
+    selected = [p for p in selected if p.table in first] + [p for p in selected if p.table not in first]
     if apply and status.get("state") != "available":
         # These rows are not re-obtainable: without the tier they stay hot,
         # and there is no reason to spend the store's reads planning a move
@@ -2728,7 +2740,22 @@ def run(
             # went into its last GiB with nothing planned.
             wait_for_wal_under(ssot_path, READER_YIELD_WAL_BYTES, budget.seconds_left(WAL_SETTLE_MAX_SECONDS))
 
+        # Planning may take half the budget; the rest is the moves'
+        # (2026-10-27, user 「继续」 on the full store): on a swapping host the
+        # plans alone took the whole 2,400 s at 03:42Z -- 1.39 GiB planned,
+        # 0.01 GiB moved -- and the store reached its ceiling with every
+        # writer stopped for three hours.  Tables not planned in time are
+        # planned first next run (``plan_first``, from this run's receipt).
+        plan_deadline = (
+            started + float(budget_seconds) * PLAN_BUDGET_SHARE
+            if apply and budget_seconds and budget_seconds > 0 else None
+        )
         for policy in selected:
+            if plan_deadline is not None and plans and time.monotonic() >= plan_deadline:
+                receipt["tables"].append(TablePlan(
+                    policy=policy, cutoff=policy.cutoff_date(moment), state="not_planned_budget",
+                ).summary())
+                continue
             plan = None
             for attempt in range(2):
                 wal_settled()
@@ -2813,7 +2840,7 @@ def _single_instance(path: Path):
 
 _STATE_WORDS = {
     "planned": "可搬", "nothing_to_move": "旧行全受保护", "nothing_old": "没有旧行",
-    "refused": "拒绝", "moved": "已搬", "nothing_moved": "未搬", "partial_budget": "预算到点、下次续搬",
+    "refused": "拒绝", "not_planned_budget": "计划时间到、下次再排", "moved": "已搬", "nothing_moved": "未搬", "partial_budget": "预算到点、下次续搬",
     "partial_batch_cap": "本轮封顶、下次续搬",
     "stopped": "中途停下", "not_started_budget": "预算用完未开始", "not_started_after_stop": "前表停下未开始",
 }
@@ -2931,7 +2958,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     since=args.since, until=args.until, holds_path=holds)
             print(json.dumps(outcome, ensure_ascii=False, indent=2))
             return 0
+        previous: dict[str, Any] = {}
+        if receipt_path and receipt_path.is_file():
+            try:
+                previous = json.loads(receipt_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                previous = {}
         receipt = run(
+            plan_first=[
+                str(row.get("table")) for row in (previous.get("tables") or [])
+                if isinstance(row, dict) and row.get("state") == "not_planned_budget"
+            ],
             ssot_path=ssot_path, cold_root=Path(root) if root is not None else None,
             tables=args.tables, apply=args.apply, budget_seconds=args.budget_seconds,
             pause_factor=args.pause_factor, batch_rows=args.batch_rows,
