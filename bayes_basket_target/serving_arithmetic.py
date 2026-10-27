@@ -421,6 +421,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 281 补记一: a served regression's centre is the envelope's
         # model centre (P0-M's c0).  Declared past the push and the restart.
         "calibrated_native_cross_ensemble_p0_v33": "2026-10-25T08:00:00Z",
+        # Charter 281 补记三: the lead term floored to the hour, so P0 moves on
+        # an hour boundary or new evidence only.  Declared past the push and
+        # the restart that deploys it.
+        "calibrated_native_cross_ensemble_p0_v34": "2026-10-27T08:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",

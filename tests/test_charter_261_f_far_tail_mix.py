@@ -152,7 +152,7 @@ def test_serving_the_gate_the_certificate_and_the_charter_say_the_same_thing() -
     from bayes_basket_target import native_ensemble_p0 as P0
     from bayes_basket_target import serving_arithmetic as sa
     # Charters 271 and 273 moved all three on (P0 v30); v28 keeps this charter's moment.
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v34"
     declared = sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v28")
     assert declared and declared == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v31") \
         == sa.version_effective_from("P1", "p1_joint_likelihood_v39")

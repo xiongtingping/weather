@@ -198,7 +198,7 @@ def test_the_consensus_shift_is_gone_and_the_versions_moved():
         assert "deterministic_consensus" not in (ROOT / path).read_text(encoding="utf-8"), path
     from bayes_basket_target import native_ensemble_p0 as P0  # noqa: PLC0415
     from bayes_basket_target import serving_arithmetic as sa  # noqa: PLC0415
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v34"
     for p0v, p0mv, p1v in (("v32", "v35", "v45"), ("v33", "v36", "v46")):
         declared = sa.version_effective_from("P0", f"calibrated_native_cross_ensemble_p0_{p0v}")
         assert declared and declared == sa.version_effective_from("P0-M", f"p0m_taf_likelihood_{p0mv}") \
@@ -275,3 +275,19 @@ def test_the_receipt_parts_add_up_to_the_served_centre():
     total = ct["ensemble_c"] + ct["f_pull_c"] + ct["radiation_c"] + ct["constant_c"]
     assert total == pytest.approx(receipt["mu_c"], abs=5e-4)
     assert ct["f_pull_c"] == pytest.approx(ct["f_weight"] * (receipt["f_c"] - ct["ensemble_c"]), abs=5e-4)
+
+
+def test_the_lead_term_is_floored_to_the_hour():
+    """补记三 (2026-10-27 「Round the lead to whole hours」): within an hour the
+    lead term does not move, so neither does a P0 on unchanged evidence."""
+
+    from bayes_basket_target import p0_ngr as NGR  # noqa: PLC0415
+
+    assert NGR.lead_covariate(5.988) == NGR.lead_covariate(5.01) == (5 - 36.0) / 24.0
+    assert NGR.lead_covariate(6.0) == (6 - 36.0) / 24.0
+    assert NGR.RULE_VERSION == "p0_ngr_v2"
+    root = Path(__file__).resolve().parents[1]
+    for script in ("scripts/fit_p0_ngr.py", "scripts/build_p0_ngr_root_replay.py",
+                   "bayes_basket_target/p0_ngr.py"):
+        text = (root / script).read_text(encoding="utf-8")
+        assert "- 36.0) / 24" not in text.replace("(math.floor(float(hours_to_settlement)) - 36.0) / 24", ""), script

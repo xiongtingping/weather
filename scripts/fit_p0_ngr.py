@@ -181,7 +181,7 @@ class Batch:
         self.win = np.array([r["winner"] for r in keep], int)
         self.F = np.array([f[0] for f in feats])
         self.Z = np.array([f[1] for f in feats])
-        self.L = np.array([(r["hours"] - 36.0) / 24.0 for r in keep])
+        self.L = np.array([NGR.lead_covariate(r["hours"]) for r in keep])
         self.rad = np.array([r["rad"] for r in keep])
         for i, r in enumerate(keep):
             k = len(r["ordered"])

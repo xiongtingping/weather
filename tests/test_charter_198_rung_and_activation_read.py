@@ -281,7 +281,7 @@ def test_the_bump_names_charter_198() -> None:
     p1 = inspect.signature(materialize_p1).parameters[
         "posterior_version"
     ].default
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v34"
     # Charter 241 moved P0-M on to v23 (its own change); charter 242 to v24 (root).
     assert p0m == "p0m_taf_likelihood_v37"
     # Charter 200 moved P1 on to v20 (its own change); v19 keeps this

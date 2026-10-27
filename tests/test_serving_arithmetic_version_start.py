@@ -153,6 +153,8 @@ CHARTER_281B_START = sa.version_effective_from(
 )
 # Charter 281 补记二 (charter 151's ruling revoked): P0-M v37 and P1 v47 only.
 CHARTER_281C_START = sa.version_effective_from("P0-M", "p0m_taf_likelihood_v37")
+# Charter 281 补记三 (the lead term floored to the hour): P0 v34.
+CHARTER_281D_START = sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v34")
 CHARTER_282_START = "2026-10-26T04:00:00Z"
 CHARTER_283_START = sa.version_effective_from("P1", "p1_joint_likelihood_v49")
 
@@ -289,7 +291,8 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     # Charter 198 (P0 v9) is declared past its push and the restart that
     # deploys it; v8 keeps charter 190's moment, v7 charter 160's and v6
     # charter 149's.
-    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
+    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v34"
+    assert CHARTER_281D_START and CHARTER_281D_START > CHARTER_281B_START
     assert CHARTER_273_START and CHARTER_273_START > CHARTER_271_START
     assert CHARTER_271_START and CHARTER_271_START > CHARTER_261_START
     assert CHARTER_190_START and CHARTER_190_START > CHARTER_160_START
@@ -318,7 +321,7 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     assert CHARTER_279_START and CHARTER_279_START > CHARTER_273_START
     assert CHARTER_281_START and CHARTER_281_START > CHARTER_279_START
     assert CHARTER_281B_START and CHARTER_281B_START > CHARTER_281_START
-    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_281B_START
+    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_281D_START
     assert sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v29") == CHARTER_271_START
     assert sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v27") == CHARTER_253_START
     assert sa.version_effective_from(

@@ -50,7 +50,7 @@ from scipy.special import ndtr
 
 from .regional_point_lane import SYSTEM_IDS
 
-RULE_VERSION = "p0_ngr_v1"
+RULE_VERSION = "p0_ngr_v2"
 LINEAGE_KEY = "p0_ngr_json"
 FIT_SCHEMA = "bayes_basket_target_p0_ngr_fit_v1"
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +68,21 @@ DET_PRODUCTS: tuple[str, ...] = (
 DET_SYSTEM_IDS: frozenset[str] = frozenset(SYSTEM_IDS[p] for p in DET_PRODUCTS)
 _PRODUCT_OF_SYSTEM = {SYSTEM_IDS[p]: p for p in DET_PRODUCTS}
 MIN_DET = 3
+
+
+def lead_covariate(hours_to_settlement: float) -> float:
+    """L, the regression's lead term: hours to settlement floored to the hour.
+
+    v2 (2026-10-27, user ruling 「Round the lead to whole hours」): the
+    continuous hours moved P0 a little every ~6-minute cycle, so every cycle
+    wrote a new P0 and P1 replayed its whole observation chain on it -- P0
+    3.3k -> 10k envelopes a day, P1 8.8k -> 29.9k, the bridge, update proofs
+    and training facts x3.3, and the store hit its ceiling 10-27 03:40Z.
+    Floored, a scope's P0 moves on an hour boundary or new evidence only.
+    Serving, the daily fit and the root replay all read L here.
+    """
+
+    return (math.floor(float(hours_to_settlement)) - 36.0) / 24.0
 FLOOR = 1e-3
 N_THETA = len(FAMILIES) + 9
 #: Theta layout: beta per family, then these.
@@ -292,7 +307,7 @@ def serve(
             receipt["reason"] = "NO_HOURS_TO_SETTLEMENT"
             return base, receipt
         F, Z = features
-        L = (float(hours_to_settlement) - 36.0) / 24.0
+        L = lead_covariate(hours_to_settlement)
         m = np.array([[moments.get(f, [0.0, 1.0])[0] for f in FAMILIES]])
         s = np.array([[moments.get(f, [0.0, 1.0])[1] for f in FAMILIES]])
         has = np.array([[f in moments for f in FAMILIES]])

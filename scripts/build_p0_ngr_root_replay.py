@@ -180,7 +180,7 @@ def main() -> int:
                 warm, m=np.array([[moments.get(f, [0.0, 1.0])[0] for f in NGR.FAMILIES]]),
                 s=np.array([[moments.get(f, [0.0, 1.0])[1] for f in NGR.FAMILIES]]),
                 has=np.array([[f in moments for f in NGR.FAMILIES]]), F=np.array([F]), Z=np.array([Z]),
-                L=np.array([(hours - 36.0) / 24.0]), rad=np.array([rad]), tlo=np.array([geom["tlo"]]),
+                L=np.array([NGR.lead_covariate(hours)]), rad=np.array([rad]), tlo=np.array([geom["tlo"]]),
                 thi=np.array([geom["thi"]]), mask=np.ones((1, len(ordered)), bool),
             )
             out.execute(

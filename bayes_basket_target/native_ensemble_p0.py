@@ -231,7 +231,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # radiation score; the consensus shift (charter 279 补记七) is retired.
 # 补记一 (same day 「重新拟合」): a served regression's centre is the
 # envelope's model centre.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v33"
+# 补记三 (2026-10-27 「Round the lead to whole hours」): the regression's lead
+# term reads the hours to settlement floored to the hour (p0_ngr.lead_covariate).
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v34"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
