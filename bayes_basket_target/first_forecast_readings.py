@@ -14,6 +14,9 @@ the settled formal truth (charter 225 lanes):
   D0              -- the first row of ``data/board_readings/d0_history`` (centre)
   WRF             -- ZUUU: the earliest forecast init that covered the day's peak hours
                      (``wrf_fcst_runs_v1.json``), else the day's nowcast record
+  best_match      -- Open-Meteo best_match's run two days before the day, its day maximum
+                     (best_match_hourly's first_d2.json; user 2026-10-27 「这里也要增加：首次预报 vs 实测」),
+                     dated the local midnight 48 h before the day
 
 Means are taken on the station-day's own ladder (rung midpoints; an open end one
 interior width out), so C and F stations read in °C alike.  MOS is not here: its
@@ -47,7 +50,7 @@ READINGS_DIR = board_readings.READINGS_DIR
 F_LEDGER = ROOT / "data" / "runtime" / "listing_forecast_f_mos_ledger_v1.jsonl"
 WINDOW_DAYS = 30
 AHEAD_DAYS = 2
-METHODS = ("P0", "P0-M", "P1", "market", "F", "member_bayes", "D0", "WRF")
+METHODS = ("P0", "P0-M", "P1", "market", "F", "member_bayes", "D0", "WRF", "best_match")
 #: One pass stops reading new station-days after this long; the rest wait for the next.
 PASS_BUDGET_SEC = 150.0
 #: How far into a station-day's snapshots to look for the first complete market ladder.
@@ -176,7 +179,21 @@ def _wrf_first() -> dict[str, tuple[str, float]]:
     return out
 
 
-def first_values(conn: sqlite3.Connection, station: str, day: str, *, f_ledger, wrf, mb, d0) -> dict[str, Any]:
+def _best_match_first(zones: dict[str, ZoneInfo]) -> dict[tuple[str, str], tuple[str, float]]:
+    from .best_match_hourly import load_first  # noqa: PLC0415
+
+    out: dict[tuple[str, str], tuple[str, float]] = {}
+    for st, rec in load_first().items():
+        zone = zones.get(st)
+        if zone is None:
+            continue
+        for day, v in ((rec or {}).get("days") or {}).items():
+            at = datetime.combine(date.fromisoformat(day), datetime.min.time(), zone) - timedelta(hours=48)
+            out[(st, day)] = (_iso(at), float(v))
+    return out
+
+
+def first_values(conn: sqlite3.Connection, station: str, day: str, *, f_ledger, wrf, mb, d0, bm=None) -> dict[str, Any]:
     """Each method's first forecast of one station-day: {method: [at_utc, °C]}."""
 
     ladder = _ladder(conn, station, day)
@@ -210,6 +227,8 @@ def first_values(conn: sqlite3.Connection, station: str, day: str, *, f_ledger, 
         out["D0"] = list(d0[station])
     if station == "ZUUU" and day in wrf:
         out["WRF"] = list(wrf[day])
+    if (station, day) in (bm or {}):
+        out["best_match"] = list(bm[(station, day)])
     for m, (at, v) in list(out.items()):
         out[m] = [at, v, _bucket(ladder, v)]
     return {"methods": out, "ladder": ladder is not None}
@@ -233,7 +252,7 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None,
     today_utc = now.date()
     first = today_utc - timedelta(days=WINDOW_DAYS)
     truths = _truths(conn, first)
-    f_ledger, wrf = _f_ledger(), _wrf_first()
+    f_ledger, wrf, bm = _f_ledger(), _wrf_first(), _best_match_first(zones)
     stations = sorted(zones)
     days = [(first + timedelta(days=i)).isoformat() for i in range(WINDOW_DAYS + AHEAD_DAYS + 2)]
     out: dict[str, dict[str, Any]] = {}
@@ -250,13 +269,13 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None,
             key, truth = f"{st}|{day}", truths.get((st, day))
             old = cache.get(key)
             # A settled day's firsts never change once read after it settled.
-            if old and old.get("settled") and old.get("truth_c") == truth:
+            if old and old.get("settled") and old.get("truth_c") == truth and ("best_match" in (old.get("methods") or {}) or (st, day) not in bm):
                 rec = old
             elif time.monotonic() - start > PASS_BUDGET_SEC:
                 skipped += 1
                 rec = old
             else:
-                rec = first_values(conn, st, day, f_ledger=f_ledger, wrf=wrf, mb=mb, d0=d0)
+                rec = first_values(conn, st, day, f_ledger=f_ledger, wrf=wrf, mb=mb, d0=d0, bm=bm)
                 rec["truth_c"] = truth
                 rec["settled"] = truth is not None and dd < local_today
                 cache[key] = rec

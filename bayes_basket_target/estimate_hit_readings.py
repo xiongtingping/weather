@@ -198,8 +198,32 @@ def _mos_first_day() -> date | None:
         return None
 
 
+def _best_match_history() -> dict[tuple[str, str], list[tuple[str, float]]]:
+    """(station, day) -> [(fetched_at_utc, latest run's day maximum)], oldest first, from the
+    hourly pulls (best_match_hourly)."""
+
+    from .best_match_hourly import HISTORY_PATH  # noqa: PLC0415
+
+    out: dict[tuple[str, str], list[tuple[str, float]]] = {}
+    try:
+        lines = HISTORY_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if r.get("tmax_latest_c") is not None and r.get("fetched_at_utc"):
+            out.setdefault((str(r["station_id"]), str(r["event_date"])), []).append(
+                (str(r["fetched_at_utc"]), float(r["tmax_latest_c"])))
+    for v in out.values():
+        v.sort()
+    return out
+
+
 def picks_at(conn: sqlite3.Connection, station: str, day: str, when: datetime, ladder, *,
-             f: float | None, wrf, d0, mb, mos: list[tuple[int, float]] | None) -> dict[str, str | None]:
+             f: float | None, wrf, d0, mb, mos: list[tuple[int, float]] | None, bm=None) -> dict[str, str | None]:
     """Each method's bucket as of ``when`` (a local time on the event day)."""
 
     at = _iso(when)
@@ -235,11 +259,14 @@ def picks_at(conn: sqlite3.Connection, station: str, day: str, when: datetime, l
            if r.get("ready_utc") and str(r["ready_utc"]) <= at and r.get("wrf_sat_tmax_with_obs_c") is not None]
     if out:
         picks["WRF"] = _label_of(ladder, out[-1]["wrf_sat_tmax_with_obs_c"])
+    # best_match as of the hour: the newest hourly pull fetched by then (plotted, not a voter).
+    got = [v for t, v in (bm or {}).get((station, day), []) if t.replace("+00:00", "Z") <= at]
+    picks["best_match"] = _label_of(ladder, got[-1]) if got else None
     return picks
 
 
 def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, truth_c: float,
-             *, f_ledger, wrf, d0, mb, mos_ok: bool) -> dict[str, Any] | None:
+             *, f_ledger, wrf, d0, mb, mos_ok: bool, bm=None) -> dict[str, Any] | None:
     """One settled station-day: the truth's bucket and each method's bucket per snapshot."""
 
     ladder = _rungs(conn, station, day)
@@ -257,7 +284,7 @@ def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, t
     # 「大概什么时候温度开始靠近并收敛，趋于真值，给我一个信心指标」); the hit cards'
     # snapshots are three of them.
     curve = {str(h): picks_at(conn, station, day, local0 + timedelta(hours=h), ladder,
-                              f=f_ledger.get((station, day)), wrf=wrf, d0=d0, mb=mb, mos=mos) for h in CURVE_HOURS}
+                              f=f_ledger.get((station, day)), wrf=wrf, d0=d0, mb=mb, mos=mos, bm=bm) for h in CURVE_HOURS}
     return {"truth_c": truth_c, "truth": truth_label, "snaps": {str(h): curve[str(h)] for h in SNAPSHOT_HOURS},
             "curve": curve, "rank": {r[0]: i for i, r in enumerate(ladder[0])}}
 
@@ -294,6 +321,10 @@ def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
 
 #: The methods the convergence timeline follows and that vote in the confidence score.
 CONVERGE_METHODS = ("F", "member_bayes", "D0", "MOS", "P1", "market")
+#: Drawn on the timeline beside the voters, voting nowhere: best_match as of each hour, from its
+#: hourly pulls (user 2026-10-27 「收敛时间线」 also gets best_match; pulls from 2026-10-27 only).
+LINE_METHODS = CONVERGE_METHODS + ("best_match",)
+BEST_MATCH_FROM = "2026-10-27"
 #: Agreement among the voters present: all on one bucket, two thirds, half, less.
 AGREE_BINS = (("all", 1.0), ("two_thirds", 2 / 3), ("half", 0.5), ("split", 0.0))
 #: Pseudo-days pulling a thin (hour, agreement) cell toward the hour's own rate.
@@ -321,14 +352,14 @@ def _convergence(cache: dict[str, Any]) -> dict[str, Any]:
     hour (from which it stays on the truth's bucket); per hour x agreement bin: how
     often the voters' bucket was the truth's -- the confidence table."""
 
-    per: dict[str, dict[int, list[float]]] = {m: {} for m in CONVERGE_METHODS}
-    locks: dict[str, list[int]] = {m: [] for m in CONVERGE_METHODS}
+    per: dict[str, dict[int, list[float]]] = {m: {} for m in LINE_METHODS}
+    locks: dict[str, list[int]] = {m: [] for m in LINE_METHODS}
     conf: dict[int, dict[str, list[int]]] = {}
     for v in cache.values():
         if not v or not v.get("truth") or not v.get("curve"):
             continue
         truth, rank = v["truth"], v.get("rank") or {}
-        for m in CONVERGE_METHODS:
+        for m in LINE_METHODS:
             seq = [(h, v["curve"][str(h)].get(m)) for h in CURVE_HOURS if v["curve"][str(h)].get(m) is not None]
             for h, p in seq:
                 c = per[m].setdefault(h, [0, 0, 0.0])
@@ -356,9 +387,9 @@ def _convergence(cache: dict[str, Any]) -> dict[str, Any]:
             b: {"n": c[0], "hits": c[1], "score": round(100 * (c[1] + CONF_PRIOR_DAYS * p_h) / (c[0] + CONF_PRIOR_DAYS))}
             for b, c in bins.items()}}
     return {
-        "methods": list(CONVERGE_METHODS),
+        "methods": list(LINE_METHODS), "voters": list(CONVERGE_METHODS),
         "by_hour": {m: {str(h): {"n": c[0], "hit": round(c[1] / c[0], 3), "bucket_err": round(c[2] / c[0], 2)}
-                        for h, c in sorted(per[m].items())} for m in CONVERGE_METHODS},
+                        for h, c in sorted(per[m].items())} for m in LINE_METHODS},
         "lock": {m: {"n": len(x), "median_hour": sorted(x)[len(x) // 2] if x else None,
                      "never": sum(1 for y in x if y == 24)} for m, x in locks.items()},
         "confidence": table,
@@ -384,7 +415,7 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dic
     cache = dict(cache or {})
     zones = _zones(conn)
     truths = _truths(conn, SINCE)
-    f_ledger, wrf = _f_ledger(), _wrf_records()
+    f_ledger, wrf, bm = _f_ledger(), _wrf_records(), _best_match_history()
     mos_from = _mos_first_day()
     mos_budget = MOS_DAYS_PER_PASS
     by_day: dict[str, list[str]] = {}
@@ -399,15 +430,17 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dic
                 continue  # the local day is not over yet
             key, t = f"{st}|{day}", truths[(st, day)]
             old = cache.get(key)
-            if old and old.get("truth_c") == t and "curve" in old and (old.get("mos_done") or mos_from is None or date.fromisoformat(day) < mos_from):
+            if (old and old.get("truth_c") == t and "curve" in old and (old.get("mos_done") or mos_from is None or date.fromisoformat(day) < mos_from)
+                    and (old.get("bm_done") or day < BEST_MATCH_FROM)):
                 continue
             mos_ok = (mos_from is not None and date.fromisoformat(day) >= mos_from and mos_budget > 0
                       and time.monotonic() - started < MOS_BUDGET_SEC)
             if mos_ok:
                 mos_budget -= 1
-            v = verdicts(conn, st, day, zone, t, f_ledger=f_ledger, wrf=wrf, d0=d0, mb=mb, mos_ok=mos_ok)
+            v = verdicts(conn, st, day, zone, t, f_ledger=f_ledger, wrf=wrf, d0=d0, mb=mb, mos_ok=mos_ok, bm=bm)
             if v is not None:
                 v["mos_done"] = mos_ok
+                v["bm_done"] = (st, day) in bm
             cache[key] = v
     out = _summarize(cache)
     out["convergence"] = _convergence(cache)

@@ -49,7 +49,7 @@ LEDGER_PATH = Path(
 DAILY_BUDGET = {
     "deterministic_relay": int(os.environ.get("PM_OPEN_METEO_RELAY_DAILY_BUDGET", "1500")),
     # Every station's best_match once an hour (user 2026-10-27 「best_match每个小时都要去拉取一次」):
-    # 49 stations x 24 hours = 1,176, with room for a retry.
+    # 49 stations x 24 hours = 1,176, plus the daily first-forecast pull (49), with room for a retry.
     "best_match_hourly": 1300,
 }
 DEFAULT_LANE_BUDGET = 500

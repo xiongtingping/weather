@@ -26,11 +26,58 @@ from . import station_day_board as B
 QUOTA_LANE = "best_match_hourly"
 HISTORY_PATH = B.BEST_MATCH_DIR / "history.jsonl"
 KEEP_SNAPSHOT_DAYS = 3
+# best_match's first forecast of a day for 首次预报 vs 实测 (user 2026-10-27 「这里也要增加：首次预报 vs
+# 实测」): the run two days before it (``temperature_2m_previous_day2``), the one out when a market
+# lists; once a UTC day per station, the last 31 days to two days ahead in one request.
+FIRST_PATH = B.BEST_MATCH_DIR / "first_d2.json"
+FIRST_BACK_DAYS, FIRST_AHEAD_DAYS = 31, 2
 
 
 def _day_max(hourly: dict[str, Any], name: str) -> float | None:
     vals = [v for v in hourly.get(name) or [] if v is not None]
     return round(max(vals), 1) if vals else None
+
+
+def _first_d2(lat: float, lon: float, tz: str, today: str) -> dict[str, float] | None:
+    """Local day -> the day-two-earlier run's maximum; None on any failure (quota included)."""
+
+    import ssl  # noqa: PLC0415
+    from datetime import date, timedelta  # noqa: PLC0415
+    from urllib.parse import urlencode  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    from . import open_meteo_quota as quota  # noqa: PLC0415
+
+    d = date.fromisoformat(today)
+    query = urlencode({"latitude": lat, "longitude": lon, "timezone": tz, "hourly": "temperature_2m_previous_day2",
+                       "start_date": (d - timedelta(days=FIRST_BACK_DAYS)).isoformat(),
+                       "end_date": (d + timedelta(days=FIRST_AHEAD_DAYS)).isoformat()})
+    try:
+        quota.charge(QUOTA_LANE, 1)
+        try:
+            import certifi  # noqa: PLC0415
+
+            context = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            context = ssl.create_default_context()
+        with urlopen(Request(f"{B.OPEN_METEO_PREVIOUS_RUNS}?{query}", headers={"User-Agent": "weather-best-match-hourly"}),
+                     timeout=30, context=context) as resp:  # noqa: S310 -- fixed https host
+            hourly = (json.loads(resp.read().decode("utf-8")) or {}).get("hourly") or {}
+    except Exception:  # noqa: BLE001 -- tried again next hour
+        return None
+    days: dict[str, list[float]] = {}
+    for t, v in zip(hourly.get("time") or [], hourly.get("temperature_2m_previous_day2") or []):
+        if v is not None:
+            days.setdefault(str(t)[:10], []).append(float(v))
+    return {k: round(max(v), 1) for k, v in days.items() if len(v) == 24}
+
+
+def load_first() -> dict[str, Any]:
+    try:
+        doc = json.loads(FIRST_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
 
 
 def _stations(conn: sqlite3.Connection) -> list[str]:
@@ -44,6 +91,7 @@ def run(*, db: Path = B.DEFAULT_DB, now: datetime | None = None) -> dict[str, An
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30)
     token = B.quota_lane.set(QUOTA_LANE)
     lines, failed = [], []
+    first = load_first()
     try:
         conn.execute("PRAGMA query_only=1")
         for station in _stations(conn):
@@ -61,6 +109,10 @@ def run(*, db: Path = B.DEFAULT_DB, now: datetime | None = None) -> dict[str, An
                     break  # the lane or the address is spent: the rest would be refused too
                 continue
             hourly = out.get("hourly") or {}
+            if (first.get(station) or {}).get("pulled_on") != now.date().isoformat():
+                got = _first_d2(where[0], where[1], tz, day)
+                if got:
+                    first[station] = {"pulled_on": now.date().isoformat(), "days": got}
             lines.append({"station_id": station, "event_date": day, "fetched_at_utc": out.get("fetched_at_utc"),
                           "tmax_latest_c": _day_max(hourly, "temperature_2m"),
                           "tmax_d1_c": _day_max(hourly, "temperature_2m_previous_day1")})
@@ -68,6 +120,9 @@ def run(*, db: Path = B.DEFAULT_DB, now: datetime | None = None) -> dict[str, An
         B.quota_lane.reset(token)
         conn.close()
     B.BEST_MATCH_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = FIRST_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(first, sort_keys=True), encoding="utf-8")
+    tmp.replace(FIRST_PATH)
     with HISTORY_PATH.open("a", encoding="utf-8") as fh:
         for line in lines:
             fh.write(json.dumps(line, ensure_ascii=False) + "\n")

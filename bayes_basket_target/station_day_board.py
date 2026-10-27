@@ -1464,6 +1464,35 @@ def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
     return None if row is None else (float(row[0]), float(row[1]))
 
 
+def _best_match_track(station: str, day: str, zone: ZoneInfo) -> list[list[Any]]:
+    """best_match's day maximum for the curves (user 2026-10-27 「曲线汇总：各估计放在一起」):
+    the run two days before at local midnight - 48 h, the run one day before at - 24 h, then
+    every hourly pull of the latest run -- [at_utc, °C, which]."""
+
+    from .best_match_hourly import HISTORY_PATH, load_first  # noqa: PLC0415
+
+    midnight = datetime.combine(date.fromisoformat(day), dtime(0), zone)
+    out: list[list[Any]] = []
+    d2 = (((load_first().get(station) or {}).get("days")) or {}).get(day)
+    if d2 is not None:
+        out.append([_iso(midnight - timedelta(hours=48)), d2, "d2"])
+    pulls = []
+    try:
+        for line in HISTORY_PATH.read_text(encoding="utf-8").splitlines():
+            if f'"{station}"' not in line or f'"{day}"' not in line:
+                continue
+            r = json.loads(line)
+            if r.get("station_id") == station and r.get("event_date") == day:
+                pulls.append(r)
+    except (OSError, ValueError):
+        pulls = []
+    d1 = next((r.get("tmax_d1_c") for r in pulls if r.get("tmax_d1_c") is not None), None)
+    if d1 is not None:
+        out.append([_iso(midnight - timedelta(hours=24)), d1, "d1"])
+    out += [[r["fetched_at_utc"], r["tmax_latest_c"], "latest"] for r in pulls if r.get("tmax_latest_c") is not None]
+    return out
+
+
 def _best_match_snapshot(key: tuple[str, str]) -> Path:
     return BEST_MATCH_DIR / f"{key[0]}_{key[1]}.json"
 
@@ -2433,6 +2462,7 @@ def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
         "d0": _d0(station, day) if role == "today" else None,
         "member_bayes": _member_bayes(station, day) if role in ("today", "ahead") else None,
         "wrf": _wrf(station, day),
+        "best_match_track": _best_match_track(station, day, zone),
     }
 
 
@@ -2818,11 +2848,12 @@ def convergence_now(conn: sqlite3.Connection, station: str, day: Mapping[str, An
            if cx.get("state") == "ok" and cx.get("forecast_tmax_d1_c") is not None else None)
     when = now.astimezone(zone)
     picks = E.picks_at(conn, station, event, when, ladder, f=E._f_ledger().get((station, event)), wrf={},
-                       d0=E._history("d0", event), mb=E._history("member_bayes", event), mos=mos)
+                       d0=E._history("d0", event), mb=E._history("member_bayes", event), mos=mos,
+                       bm=E._best_match_history())
     score = E.confidence_score(table, when.hour, picks)
     if score is None:
         return None
-    return {**score, "picks": {m: picks.get(m) for m in E.CONVERGE_METHODS},
+    return {**score, "picks": {m: picks.get(m) for m in E.LINE_METHODS},
             "curve": {h: c["hit"] for h, c in table.items()}, "days": len(v.get("days") or [])}
 
 
