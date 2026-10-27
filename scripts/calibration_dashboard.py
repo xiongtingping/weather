@@ -22025,7 +22025,7 @@ try{ const h = JSON.parse(sessionStorage.getItem("sd-cmp-hidden") || "null"); if
 function sdSave(){
   try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc})); }catch(e){}
 }
-const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c", "METAR":"#6e7781", "TX":"#9775fa", "WRF":"#0e9f6e"};
+const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c", "METAR":"#6e7781", "TX":"#9775fa", "WRF":"#0e9f6e", "BM":"#e36209"};
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const sdPc = (v, d) => v == null || !isFinite(v) ? "—" : (100 * v).toFixed(d == null ? 1 : d) + "%";
 const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);
@@ -22626,6 +22626,9 @@ function sdCompareChart(day){
     S("MB", "成员轨迹贝叶斯", SD_COL.MB, ((day.member_bayes || {}).history || []).map(h => [h.as_of_utc, h.post_mean_c])),
     S("D0", "D0 实况模型", SD_COL.D0, ((day.d0 || {}).history || []).map(h => [h.at, h.centre_c])),
     S("MOS", "观测更新型 MOS", SD_COL.MOS, sdMosPoints(day).map(p => [p[0], p[1]])),
+    // best_match's day maximum run by run (user 2026-10-27 「曲线汇总：各估计放在一起」): the run two
+    // days before, the run one day before, then every hourly pull of the latest run.
+    S("BM", "best_match", SD_COL.BM, (day.best_match_track || []).map(p => [p[0], p[1]])),
     // The reports and the TAF's forecast maximum on the same clock (user
     // 2026-10-21「增加metar、TAF TX」, replacing the mean ± 1σ chart).  They
     // are evidence, not estimates: drawn and hoverable, kept out of the trend.
@@ -23080,9 +23083,9 @@ function sdMemberBayes(day){
 // the market's own ladder).  One card per method: all stations at 13:00 in big, 10:00 and
 // 16:00, this station and the market on the same station-days in small.  Read only.
 const SD_HIT_NAMES = {"P0": "P0 概率", "P0-M": "P0-M 概率", "P1": "P1 概率", market: "市场", F: "确定性预报 F",
-  member_bayes: "成员轨迹贝叶斯", D0: "D0 实况模型", MOS: "观测更新型 MOS", WRF: "WRF"};
+  member_bayes: "成员轨迹贝叶斯", D0: "D0 实况模型", MOS: "观测更新型 MOS", WRF: "WRF", best_match: "best_match"};
 const SD_HIT_COL = {"P0": SD_COL.P0, "P0-M": SD_COL["P0-M"], "P1": SD_COL.P1, market: SD_COL.MKT, F: SD_COL.DET,
-  member_bayes: SD_COL.MB, D0: SD_COL.D0, MOS: SD_COL.MOS, WRF: SD_COL.WRF};
+  member_bayes: SD_COL.MB, D0: SD_COL.D0, MOS: SD_COL.MOS, WRF: SD_COL.WRF, best_match: SD_COL.BM};
 function sdHitStrip(day){
   const H = (SD.data || {}).estimate_hit;
   // Drawn under every day's card: only the selected day's card is shown (the others are
@@ -23145,7 +23148,7 @@ function sdConvergence(day){
 // 2026-10-22 「增加首次预报和真值的曲线对比（近30天）」): first_forecast_readings keeps,
 // per station-day, the first number every method gave (however early) as °C; the truth
 // as squares, one line per method, the legend toggles a line and carries its error.
-const SD_FF_ON = new Set(["P0", "P1", "market", "WRF"]);
+const SD_FF_ON = new Set(["P0", "P1", "market", "WRF", "best_match"]);
 function sdFirstChart(){
   const F = (SD.data || {}).first_forecast;
   if(!F || !F.days) return "";
