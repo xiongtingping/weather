@@ -24837,7 +24837,9 @@ function sdSky(day){
             const past = hiP && loP && S.length > 1 && hiP !== loP
               ? `<div class="sd-cx-hls">${tile("今天推算最高", hiP, "sd-cx-hl-hi")}${tile("今天推算最低", loP, "sd-cx-hl-lo")}</div>` : "";
             return `<div class="sd-cx-peak"><small>最新推算 · ${hh(CX.hour)}:00</small><b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b></div>`
-              + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(CX.total_c)}">${T(CX.total_c)}</b> <small>（日前预报 ${sdN(fc, 1)}）</small></div>`
+              // best_match named, both runs (user 2026-10-27 「best_match在顶部温度卡显式」): the MOS
+              // starts from the run one day earlier; the latest run is the temperature card's number.
+              + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(CX.total_c)}">${T(CX.total_c)}</b> <small title="Open-Meteo best_match：MOS 从提前 1 天那一轮出发；最新一轮＝气温卡的大数字">（best_match 提前 1 天 ${sdN(fc, 1)}${peakNow == null ? "" : ` · 最新 ${sdN(peakNow, 1)}`}）</small></div>`
               + `<div class="sd-cx-nowbox"><div class="sd-cx-buckets" title="${sdEsc(`按最新 ${hh(CX.hour)}:00 的推算（${T(CX.total_c)}）在当天市场梯子上算出的各档概率（t 分布，自由度 ${CX.t_df || "—"}）。样本外分档 LogScore 每个时刻都显著好于日前预报`)}"><small>各档概率</small>${
                 (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div></div>`
               + sdMosSide(CX)
