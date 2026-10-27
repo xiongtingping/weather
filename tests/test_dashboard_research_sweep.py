@@ -87,8 +87,12 @@ def test_a_wake_with_nothing_due_exits_before_any_wait(tmp_path: Path) -> None:
 
 
 def test_the_wake_interval_is_five_minutes() -> None:
-    plist = (ROOT / "launchd" / "com.weather.dashboard_research_render.plist").read_text(encoding="utf-8")
-    assert "<key>StartInterval</key>\n  <integer>300</integer>" in plist
+    import plistlib  # noqa: PLC0415
+
+    # Parsed, not grepped: a "--" inside an XML comment made the plist
+    # unloadable on its first install (2026-10-27).
+    with (ROOT / "launchd" / "com.weather.dashboard_research_render.plist").open("rb") as handle:
+        assert plistlib.load(handle)["StartInterval"] == 300
 
 
 def test_it_waits_for_an_oversized_wal_to_be_truncated(tmp_path: Path) -> None:

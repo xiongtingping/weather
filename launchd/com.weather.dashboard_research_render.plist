@@ -21,7 +21,7 @@
        2026-10-27 (「Fix the research render's scheduling」): on 3,600 s
        launchd dropped each start that found the last run still going, and
        runs came 70-110 minutes apart; a wake with nothing due exits at once
-       (calibration_dashboard.py --research-due, no SSOT read). -->
+       (the board's research-due check, no SSOT read). -->
   <key>StartInterval</key>
   <integer>300</integer>
   <key>RunAtLoad</key>
