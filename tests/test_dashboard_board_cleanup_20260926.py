@@ -619,6 +619,31 @@ def test_an_isolated_section_that_dies_is_recorded_as_killing_its_run(pages, mon
     assert "scorecard" in killed
 
 
+def test_a_section_that_yields_is_backed_off_like_a_killed_one(pages, monkeypatch) -> None:
+    """2026-10-27 (user 「打前端各板块超期问题」): member_depth, past the overdue
+    line, led every run, read 24 minutes, yielded at the WAL line and left
+    no budget for the pages behind it; the next run picked it first again."""
+
+    from bayes_basket_target import resource_bounds  # noqa: PLC0415
+
+    now = datetime(2026, 10, 27, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "_now", lambda: now)
+    _page(pages, "member_depth", age_sec=C.RESEARCH_PAGE_OVERDUE_SEC + 3600,
+          cost=C.RESEARCH_SECTION_MIN_COST_SEC * 2, now=now)
+    _page(pages, "skill", age_sec=C.STARVED_PAGE_AGE_SEC + 60, cost=20.0, now=now)
+    specs = {"member_depth": {}, "skill": {}}
+    assert [n for _o, n, _c in C.research_due(specs, now)][0] == "member_depth"
+    monkeypatch.setattr(C, "_live_specs", lambda _raw: specs)
+    monkeypatch.setattr(C, "_page_render_running", lambda: False)
+    monkeypatch.setattr(resource_bounds, "wait_for_wal_under", lambda *_a, **_k: True)
+    monkeypatch.setattr(C, "_refresh_one_section_isolated",
+                        lambda _db, name, _spec: f"{name} not computed (yielded)" if name == "member_depth"
+                        else f"{name} computed in 1s")
+    C.refresh_research_section(pages / "ssot.db")
+    assert "member_depth" in C._load_closed_readings(C.RESEARCH_KILLED_FILE)["killed"]
+    assert [n for _o, n, _c in C.research_due(specs, now)] == ["skill", "member_depth"]
+
+
 def test_the_child_entry_computes_one_section_and_reports(pages, monkeypatch, capsys) -> None:
     spec = {"module": "calibration_dashboard", "collector": "collect_chain"}
     monkeypatch.setattr(C, "_load_closed_readings", lambda _name: {"scorecard": spec})

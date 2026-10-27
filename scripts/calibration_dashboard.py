@@ -14786,6 +14786,16 @@ def refresh_research_section(db: Path) -> str:
                 # runs of "yielded to the writer (wal 41x MB)", one per
                 # section, minutes apart).
                 if "yield" in done[-1] or "interrupted" in done[-1]:
+                    # And back it off as a killed one is: a heavy page past the
+                    # overdue line leads every run, so one that cannot finish
+                    # before the WAL line took every run whole -- 2026-10-27
+                    # (user 「打前端各板块超期问题」) member_depth read 24 minutes,
+                    # yielded, and left no budget for the 17 pages behind it,
+                    # run after run.
+                    ledger = _load_closed_readings(RESEARCH_KILLED_FILE)
+                    killed = dict(ledger.get("killed") or {})
+                    killed[name] = _now().isoformat().replace("+00:00", "Z")
+                    _save_closed_readings(RESEARCH_KILLED_FILE, {"killed": killed})
                     from bayes_basket_target.resource_bounds import wait_for_wal_under  # noqa: PLC0415
                     if not wait_for_wal_under(db, RENDER_MAX_WAL_BYTES, RESEARCH_WAL_WAIT_SEC):
                         done.append("stopped: the WAL stayed past the line")
