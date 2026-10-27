@@ -58,3 +58,26 @@ def test_labelled_revisions_clear_the_backlog(monkeypatch) -> None:
     conn = _db()
     conn.execute("INSERT INTO basket_policy_training_label VALUES('d2fact_1','t-a1')")
     assert C._truth_label_backlog(conn)["station_days"] == 0
+
+
+def test_a_paged_run_checks_a_clean_day_again_only_when_its_truth_moves(monkeypatch, tmp_path) -> None:
+    """2026-10-27: with no backlog every fact was looked up every render
+    (~55k rows, 12-14 s; ~250 s swapping).  A clean station-day is kept with
+    its truth; a revision is checked again."""
+
+    monkeypatch.setattr(C, "_now", lambda: datetime(2026, 10, 15, 12, tzinfo=timezone.utc))
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(C, "_PAGED_RUN", {"paged": True})
+    conn = _db()
+    conn.execute("INSERT INTO basket_policy_training_label VALUES('d2fact_1','t-a1')")
+    assert C._truth_label_backlog(conn)["station_days"] == 0
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    assert C._truth_label_backlog(conn)["station_days"] == 0
+    conn.set_trace_callback(None)
+    assert not [sql for sql in seen if "basket_policy_training_fact" in sql], seen
+    # A third revision for KLGA: its facts lack it, and the kept day does not hide it.
+    conn.execute("INSERT INTO calibration_station_daily_high_truth VALUES"
+                 "('t-a2','KLGA','2026-10-10',2,'SETTLEMENT_SOURCE','ACCEPTED','2026-10-13T06:00:00Z')")
+    backlog = C._truth_label_backlog(conn)
+    assert backlog["station_days"] == 1 and backlog["oldest_date"] == "2026-10-10"

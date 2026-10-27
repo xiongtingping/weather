@@ -519,7 +519,11 @@ def test_every_chain_light_is_a_seek():
     )
     capture = _plan(conn, board.CHAIN_LATEST_SQL["capture"], 100_000)
     assert "rowid>?" in capture and "SCAN calibration_native_ensemble_historical_member_run\n" not in capture + "\n", capture
-    for key in ("truth", "activation", "p0", "p1"):
+    # The activation link reads the table's tail too (2026-10-27): no index
+    # leads with valid_from_utc, so a MAX over the table walked a whole index.
+    activation = _plan(conn, board.CHAIN_LATEST_SQL["activation"], 10_000)
+    assert "rowid>?" in activation and "SCAN" not in activation, activation
+    for key in ("truth", "p0", "p1"):
         plan = _plan(conn, board.CHAIN_LATEST_SQL[key])
         assert "COVERING INDEX" in plan, (key, plan)
     body = SOURCE.split("def collect_chain(", 1)[1].split("\ndef ", 1)[0]

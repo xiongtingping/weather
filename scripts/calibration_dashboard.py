@@ -4242,8 +4242,16 @@ CHAIN_LATEST_SQL = {
         "  FROM calibration_native_ensemble_historical_member_run) - ?"
     ),
     "truth": "SELECT MAX(local_date) FROM calibration_station_daily_high_truth",
+    # The table's tail, as for the capture: no index leads with
+    # valid_from_utc, so MAX over the whole table walked the 1.6M-entry
+    # as-of index (12 s alone, ~250 s inside a swapping page render;
+    # 2026-10-27, user 「继续」 on the overdue pages).  Activations are
+    # written in time order; on that day the newest valid_from sat 55 rows
+    # from the end.
     "activation": (
         "SELECT MAX(valid_from_utc) FROM calibration_native_ensemble_activation"
+        " WHERE rowid > (SELECT MAX(rowid)"
+        "  FROM calibration_native_ensemble_activation) - ?"
     ),
     "p0": (
         "SELECT MAX(decision_at_utc) FROM basket_probability_bridge_history"
@@ -4265,36 +4273,75 @@ TRUTH_LABEL_BACKLOG_GRACE_H = 6
 TRUTH_LABEL_BACKLOG_DAYS = 10
 
 
+#: Station-days found fully labelled for their newest truth, kept across
+#: paged runs by ``_truth_label_backlog`` and checked again after this long.
+RENDER_TRUTH_LABEL_CLEAN = "_truth_label_clean.json"
+TRUTH_LABEL_CLEAN_RECHECK_SEC = 24 * 3600
+
+
 def _truth_label_backlog(conn: sqlite3.Connection) -> dict[str, Any] | None:
     """Recent station-days whose newest formal truth some training fact still
     lacks a label for.  The truth table is small; each fact is checked by the
-    label table's (fact_id, truth_id) key, so this is seconds, not a scan."""
+    label table's (fact_id, truth_id) key.
+
+    2026-10-27 (user 「继续」 on the overdue pages): with no backlog every
+    fact of every station-day is checked -- ~55k training-fact rows looked
+    up for their fact_id over ten days, 12-14 s alone and ~250 s inside a
+    swapping page render, which runs this every time.  A station-day found
+    clean for its newest truth stays clean (its facts were all decided
+    before the day closed, and labels are only added), so a paged run keeps
+    it with that truth and checks it again only when the truth is revised,
+    or a day later.
+    """
 
     from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: PLC0415
 
-    floor = (_now() - timedelta(days=TRUTH_LABEL_BACKLOG_DAYS)).strftime("%Y-%m-%d")
-    grace = (_now() - timedelta(hours=TRUTH_LABEL_BACKLOG_GRACE_H)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _now()
+    floor = (now - timedelta(days=TRUTH_LABEL_BACKLOG_DAYS)).strftime("%Y-%m-%d")
+    grace = (now - timedelta(hours=TRUTH_LABEL_BACKLOG_GRACE_H)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    clean = dict(_load_closed_readings(RENDER_TRUTH_LABEL_CLEAN).get("clean") or {}) if _PAGED_RUN else {}
+    stamp = now.isoformat().replace("+00:00", "Z")
     try:
-        rows = conn.execute(
-            "SELECT l.local_date, l.committed FROM ("
-            " SELECT t.station_id, t.local_date, t.truth_id,"
-            " t.canonical_committed_at_utc AS committed"
+        truths = conn.execute(
+            "SELECT t.station_id, t.local_date, t.truth_id,"
+            " t.canonical_committed_at_utc"
             " FROM calibration_station_daily_high_truth t"
             f" WHERE t.local_date>=? AND t.source_lane IN {FORMAL_TRUTH_LANES_SQL}"
             " AND t.qc_status='ACCEPTED' AND t.canonical_committed_at_utc<=?"
             " AND t.revision_no=(SELECT MAX(t2.revision_no)"
             " FROM calibration_station_daily_high_truth t2"
             " WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date"
-            f" AND t2.source_lane IN {FORMAL_TRUTH_LANES_SQL})"
-            ") l WHERE EXISTS (SELECT 1 FROM basket_policy_training_fact f"
-            " WHERE f.station_id=l.station_id AND f.event_date=l.local_date"
-            " AND f.fact_id LIKE 'd2fact_%'"
-            " AND NOT EXISTS (SELECT 1 FROM basket_policy_training_label b"
-            " WHERE b.fact_id=f.fact_id AND b.truth_id=l.truth_id))",
+            f" AND t2.source_lane IN {FORMAL_TRUTH_LANES_SQL})",
             (floor, grace),
         ).fetchall()
+        rows = []
+        kept: dict[str, Any] = {}
+        for station, day, truth_id, committed in truths:
+            key = f"{station}|{day}"
+            held = clean.get(key)
+            at = _parse_utc_or_none(held[1]) if isinstance(held, list) and len(held) == 2 else None
+            if (
+                at is not None and held[0] == truth_id
+                and (now - at).total_seconds() < TRUTH_LABEL_CLEAN_RECHECK_SEC
+            ):
+                kept[key] = held
+                continue
+            owed = conn.execute(
+                "SELECT 1 FROM basket_policy_training_fact f"
+                " WHERE f.station_id=? AND f.event_date=?"
+                " AND f.fact_id LIKE 'd2fact_%'"
+                " AND NOT EXISTS (SELECT 1 FROM basket_policy_training_label b"
+                " WHERE b.fact_id=f.fact_id AND b.truth_id=?) LIMIT 1",
+                (station, day, truth_id),
+            ).fetchone()
+            if owed:
+                rows.append((day, committed))
+            else:
+                kept[key] = [truth_id, stamp]
     except sqlite3.Error:
         return None
+    if _PAGED_RUN and kept != clean:
+        _save_closed_readings(RENDER_TRUTH_LABEL_CLEAN, {"clean": kept})
     oldest = min((str(r[0]) for r in rows), default="")
     oldest_commit = min((str(r[1]) for r in rows), default=None)
     return {
@@ -4393,7 +4440,9 @@ def collect_chain(
                 f"；{count} 个站日真值已到、还没给训练事实打标签"
                 f"（最早 {oldest[5:]}）"
             )
-    art = conn.execute(CHAIN_LATEST_SQL["activation"]).fetchone()
+    art = conn.execute(
+        CHAIN_LATEST_SQL["activation"], (CHAIN_CAPTURE_TAIL_ROWS,)
+    ).fetchone()
     add(
         "③ 校正与权重",
         "每站每模型的偏差订正，以及各模型的融合权重",
