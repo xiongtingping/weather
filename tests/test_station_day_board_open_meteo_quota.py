@@ -27,6 +27,8 @@ def ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(Q, "LEDGER_PATH", path)
     monkeypatch.setattr(B, "_FORECAST_CACHE", {})
     monkeypatch.setattr(B, "_DAY_REFUSED_UNTIL", [])
+    # A test's fake answer must not land in, or be read from, the live snapshots.
+    monkeypatch.setattr(B, "BEST_MATCH_DIR", tmp_path / "best_match_hourly")
     return path
 
 

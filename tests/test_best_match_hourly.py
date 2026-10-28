@@ -18,7 +18,9 @@ from bayes_basket_target import station_day_board as B
 def test_board_reads_a_fresh_disk_pull_without_asking(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(B, "BEST_MATCH_DIR", tmp_path)
     monkeypatch.setattr(B, "_FORECAST_CACHE", {})
-    key = ("30.578,103.947", "2026-10-27")
+    # Today's local day: a closed day is held six hours, so a 70-minute pull would still serve.
+    today = datetime.now(B.ZoneInfo("Asia/Shanghai")).date().isoformat()
+    key = ("30.578,103.947", today)
     fresh = {"available": True, "hourly": {"temperature_2m": [19.6]},
              "fetched_at_utc": B._iso(datetime.now(timezone.utc) - timedelta(minutes=50))}
     B._best_match_snapshot(key).write_text(json.dumps(fresh), encoding="utf-8")
@@ -27,12 +29,12 @@ def test_board_reads_a_fresh_disk_pull_without_asking(tmp_path: Path, monkeypatc
         raise AssertionError("asked Open-Meteo")
 
     monkeypatch.setattr("bayes_basket_target.open_meteo_quota.charge", no_network)
-    assert B._open_meteo_hourly(30.578, 103.947, "Asia/Shanghai", "2026-10-27")["hourly"]["temperature_2m"] == [19.6]
+    assert B._open_meteo_hourly(30.578, 103.947, "Asia/Shanghai", today)["hourly"]["temperature_2m"] == [19.6]
     stale = {**fresh, "fetched_at_utc": B._iso(datetime.now(timezone.utc) - timedelta(minutes=70))}
     B._best_match_snapshot(key).write_text(json.dumps(stale), encoding="utf-8")
     monkeypatch.setattr(B, "_FORECAST_CACHE", {})
     with pytest.raises(AssertionError):
-        B._open_meteo_hourly(30.578, 103.947, "Asia/Shanghai", "2026-10-27")
+        B._open_meteo_hourly(30.578, 103.947, "Asia/Shanghai", today)
 
 
 def test_hourly_job_writes_one_history_line_per_station(tmp_path: Path, monkeypatch) -> None:
@@ -58,3 +60,33 @@ def test_hourly_job_writes_one_history_line_per_station(tmp_path: Path, monkeypa
     assert seen == [("2026-10-27", True, "best_match_hourly")]
     line = json.loads((tmp_path / "bm" / "history.jsonl").read_text().splitlines()[0])
     assert (line["station_id"], line["tmax_latest_c"], line["tmax_d1_c"]) == ("ZUUU", 19.6, 20.2)
+
+
+def test_a_newer_disk_pull_replaces_the_board_s_older_copy(tmp_path: Path, monkeypatch) -> None:
+    """User 2026-10-28 「数据保持一致」: the card read the process's half-hour copy while the curve
+    ended on the newer hourly pull."""
+
+    monkeypatch.setattr(B, "BEST_MATCH_DIR", tmp_path)
+    key = ("30.578,103.947", "2026-10-27")
+    now = datetime.now(timezone.utc)
+    import time
+
+    old = {"available": True, "hourly": {"temperature_2m": [20.9]}, "fetched_at_utc": B._iso(now - timedelta(minutes=20))}
+    monkeypatch.setattr(B, "_FORECAST_CACHE", {key: (time.monotonic(), old)})
+    new = {**old, "hourly": {"temperature_2m": [21.0]}, "fetched_at_utc": B._iso(now - timedelta(minutes=2))}
+    B._best_match_snapshot(key).write_text(json.dumps(new), encoding="utf-8")
+    assert B._open_meteo_hourly(30.578, 103.947, "Asia/Shanghai", "2026-10-27")["hourly"]["temperature_2m"] == [21.0]
+
+
+def test_the_curve_ends_on_the_table_s_maximum(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(M, "HISTORY_PATH", tmp_path / "history.jsonl")
+    monkeypatch.setattr(M, "load_first", lambda: {})
+    lines = [{"station_id": "ZUUU", "event_date": "2026-10-28", "fetched_at_utc": t, "tmax_latest_c": v, "tmax_d1_c": 20.7}
+             for t, v in (("2026-10-28T00:52:00Z", 20.9), ("2026-10-28T01:54:00Z", 21.0), ("2026-10-28T03:02:00Z", 21.2))]
+    M.HISTORY_PATH.write_text("".join(json.dumps(r) + "\n" for r in lines), encoding="utf-8")
+    sky = {"fetched_at_utc": "2026-10-28T01:54:00Z",
+           "rows": [{"forecast": {"temp_c": 21.0 if h == 15 else 15.0, "temp_c_d1": 20.8 if h == 15 else 14.0}} for h in range(24)]}
+    track = B._best_match_track("ZUUU", "2026-10-28", B.ZoneInfo("Asia/Shanghai"), sky)
+    assert track[-1] == ["2026-10-28T01:54:00Z", 21.0, "latest"]          # the card's number, no newer pull
+    assert [p[1] for p in track if p[2] == "d1"] == [20.8]                 # the card's day-before run
+    assert [p[1] for p in track if p[2] == "latest"] == [20.9, 21.0]

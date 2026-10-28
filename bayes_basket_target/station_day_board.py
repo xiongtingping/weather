@@ -1464,10 +1464,29 @@ def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
     return None if row is None else (float(row[0]), float(row[1]))
 
 
-def _best_match_track(station: str, day: str, zone: ZoneInfo) -> list[list[Any]]:
+def _served_peaks(sky: dict[str, Any] | None) -> tuple[str | None, float | None, float | None]:
+    """(fetched_at_utc, latest run's day maximum, day-before run's) of the hourly forecast the
+    page shows -- the best_match card's rule: a maximum only over a whole day of hours."""
+
+    rows = (sky or {}).get("rows") or []
+
+    def peak(name: str) -> float | None:
+        vals = [(r.get("forecast") or {}).get(name) for r in rows]
+        return round(max(vals), 1) if vals and all(v is not None for v in vals) else None
+
+    return (sky or {}).get("fetched_at_utc"), peak("temp_c"), peak("temp_c_d1")
+
+
+def _best_match_track(station: str, day: str, zone: ZoneInfo,
+                      sky: dict[str, Any] | None = None) -> list[list[Any]]:
     """best_match's day maximum for the curves (user 2026-10-27 「曲线汇总：各估计放在一起」):
     the run two days before at local midnight - 48 h, the run one day before at - 24 h, then
-    every hourly pull of the latest run -- [at_utc, °C, which]."""
+    every hourly pull of the latest run -- [at_utc, °C, which].
+
+    One forecast on the page (user 2026-10-28 「数据保持一致」): with ``sky`` (the hourly table
+    the card reads) the track stops at that fetch and ends on its maximum, and the day-before
+    point is its day-before maximum -- a pull newer than the table, or the board's own fetch
+    the pulls never logged, would otherwise leave the curve's end off the card's number."""
 
     from .best_match_hourly import HISTORY_PATH, load_first  # noqa: PLC0415
 
@@ -1486,11 +1505,16 @@ def _best_match_track(station: str, day: str, zone: ZoneInfo) -> list[list[Any]]
                 pulls.append(r)
     except (OSError, ValueError):
         pulls = []
-    d1 = next((r.get("tmax_d1_c") for r in pulls if r.get("tmax_d1_c") is not None), None)
+    served_at, served_now, served_d1 = _served_peaks(sky)
+    d1 = served_d1 if served_d1 is not None else next(
+        (r.get("tmax_d1_c") for r in pulls if r.get("tmax_d1_c") is not None), None)
     if d1 is not None:
         out.append([_iso(midnight - timedelta(hours=24)), d1, "d1"])
-    out += [[r["fetched_at_utc"], r["tmax_latest_c"], "latest"] for r in pulls if r.get("tmax_latest_c") is not None]
-    return out
+    latest = [[r["fetched_at_utc"], r["tmax_latest_c"], "latest"] for r in pulls if r.get("tmax_latest_c") is not None]
+    if served_at and served_now is not None:
+        latest = [p for p in latest if _utc(p[0]) is not None and _utc(p[0]) < _utc(served_at)]
+        latest.append([served_at, served_now, "latest"])
+    return out + latest
 
 
 def _best_match_snapshot(key: tuple[str, str]) -> Path:
@@ -1512,17 +1536,20 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str, *, force: bool
     hit = _FORECAST_CACHE.get(key)
     # A closed local day (yesterday's column) no longer changes: kept six hours.
     ttl = CLOSED_DAY_CACHE_SECONDS if day < datetime.now(ZoneInfo(tz)).date().isoformat() else FORECAST_CACHE_SECONDS
-    if hit and not force and time.monotonic() - hit[0] < ttl:
-        return hit[1]
     if not force:
+        # The hourly pull's snapshot when it is newer than this process's copy, so the table,
+        # the card and the curve's end (history.jsonl) read the same run (2026-10-28).
         try:
             disk = json.loads(_best_match_snapshot(key).read_text(encoding="utf-8"))
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(str(disk["fetched_at_utc"]).replace("Z", "+00:00"))).total_seconds()
-            if disk.get("available") and 0 <= age < max(ttl, BEST_MATCH_DISK_SECONDS):
+            if (disk.get("available") and 0 <= age < max(ttl, BEST_MATCH_DISK_SECONDS)
+                    and not (hit and str(hit[1].get("fetched_at_utc") or "") >= str(disk["fetched_at_utc"]))):
                 _FORECAST_CACHE[key] = (time.monotonic(), disk)
                 return disk
         except (OSError, ValueError, KeyError, TypeError):
             pass
+        if hit and time.monotonic() - hit[0] < ttl:
+            return hit[1]
     now_iso = datetime.now(timezone.utc).isoformat()
     if _DAY_REFUSED_UNTIL and now_iso < _DAY_REFUSED_UNTIL[0]:
         return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
@@ -2448,6 +2475,7 @@ def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
     the read-only models and the tropical card."""
 
     metar = _metar(station, day, zone) if metar is None else metar
+    sky = _hourly_vs_forecast(conn, station, day, zone, metar)
     return {
         "metar": metar,
         "tropical": _tropical_rules(conn, station, day, zone, metar),
@@ -2456,13 +2484,13 @@ def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
         "precip": _precip(conn, station, day),
         "precip_sat": _precip_sat(station, day, zone),
         "precip_5min": _precip_5min(station, day, zone),
-        "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
+        "hourly_sky": sky,
         "direction": _direction(station, day),
         "deterministic": _deterministic(conn, station, day),
         "d0": _d0(station, day) if role == "today" else None,
         "member_bayes": _member_bayes(station, day) if role in ("today", "ahead") else None,
         "wrf": _wrf(station, day),
-        "best_match_track": _best_match_track(station, day, zone),
+        "best_match_track": _best_match_track(station, day, zone, sky),
     }
 
 
