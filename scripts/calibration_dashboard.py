@@ -25102,7 +25102,9 @@ function sdSky(day){
       const gap = end ? end.total_c - byHour[end.hour].total_c : null;
       const pl = `<polyline points="${[start].concat(pts).map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="5 3"/>`;
       const ends = pts.map(p => `<circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="2.2" fill="var(--card)" stroke="var(--accent)" stroke-width="1"><title>${sdEsc(`${hh(h)}:00 时外推的 ${hh(p.hour)}:00：ΔT ${sdSg(p.total_c, 1)}°C${byHour[p.hour] ? `；实际推算 ${sdSg(byHour[p.hour].total_c, 1)}°C` : ""}`)}</title></circle>`).join("");
-      const lab = `<text class="sd-cx-pastlab" x="${x0 + 4}" y="${y0 + 10}">实线＝实际推算 · <tspan fill="var(--accent)">虚线＝${hh(h)}:00 时的外推</tspan>${gap == null ? "" : ` · 到 ${hh(end.hour)}:00 外推比实际 ${sdSg(gap, 1)}°C`}</text>`;
+      // Both dashed lines named (user 2026-10-28 「这里不是一条实线和一条虚线，是两条虚线」):
+      // the grey one is the newest hour's what-if, the blue one the past hour's.
+      const lab = `<text class="sd-cx-pastlab" x="${x0 + 4}" y="${y0 + 10}">实线＝实际推算${proj.length ? ` · 灰虚线＝${hh(last.hour)}:00 现在的外推` : ""} · <tspan fill="var(--accent)">蓝虚线＝${hh(h)}:00 时的外推</tspan>${gap == null ? "" : ` · 到 ${hh(end.hour)}:00 蓝虚线比实际 ${sdSg(gap, 1)}°C`}</text>`;
       return `<g class="sd-cx-past" data-cx-anchor="${h}"${h === pick ? "" : ` style="display:none"`}>${pl}${ends}${lab}</g>`;
     }).join("");
     return `<svg class="sd-cx-chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="合成 ΔT 逐小时">
