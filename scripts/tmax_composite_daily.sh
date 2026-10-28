@@ -59,6 +59,9 @@ step features 900 "$PY" "$M3/features.py"
 step forward 900 "$PY" "$M3/forward.py"
 # Weekly refit (Mondays UTC, or when no refit exists yet): a new version the
 # board reads from its next request; the old ones stay for the forward record.
+# Admission (user 2026-10-28 「加准入门」, refit_gate.py): written only when the
+# procedure fitted without the newest 14 days is not worse on them than the card
+# in use; refused, the card stays and refit_gate.json says why.
 if [ "$(date -u +%u)" = "1" ] || [ ! -f "$OUT/tmax_composite_shift_v1.json" ]; then
   step refit 900 "$PY" "$M3/fit_board.py" --runtime
 fi

@@ -36,15 +36,10 @@ RUNTIME_DIR = e.ROOT / "data" / "runtime" / "tmax_composite"
 HOURS = tuple(range(0, 9)) + tuple(range(9, 18)) + tuple(range(18, 24))
 
 
-def main() -> int:
-    import argparse  # noqa: PLC0415
+def build(rows: list[dict]) -> dict:
+    """One fit of the card on ``rows`` (the store, or the store less the gate's held-out days)."""
 
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--runtime", action="store_true",
-                    help="daily refit: write data/runtime/tmax_composite/ (the board reads it first) and keep a copy per version")
-    args = ap.parse_args()
     e.CHECK_HOURS = HOURS
-    rows = json.loads(e.DAYS.read_text())
     D = e.Data(rows)
     m = np.ones(D.n, bool)
     cphys = e.fit_phys(D, m)
@@ -99,6 +94,28 @@ def main() -> int:
         "by_hour": by_hour,
     }
     out["version"] = out["fitted_at_utc"].replace(":", "").replace("-", "")
+    return out
+
+
+def main() -> int:
+    import argparse  # noqa: PLC0415
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--runtime", action="store_true",
+                    help="weekly refit: write data/runtime/tmax_composite/ (the board reads it first) and keep a copy per version")
+    args = ap.parse_args()
+    rows = json.loads(e.DAYS.read_text())
+    out = build(rows)
+    if args.runtime:
+        # Admission (user 2026-10-28 「加准入门」): the new fit replaces the card only when the
+        # procedure, fitted without the newest days, is not worse on them than the card in use.
+        import refit_gate  # noqa: PLC0415
+
+        verdict = refit_gate.judge(rows, out, build)
+        if not verdict["admitted"]:
+            print("refit not admitted:", verdict["reason"], "-- the card in use is kept")
+            return 0
+        out["admission"] = verdict["summary"]
     text = json.dumps(out, ensure_ascii=False, indent=1)
     if args.runtime:
         (RUNTIME_DIR / "versions").mkdir(parents=True, exist_ok=True)
