@@ -197,6 +197,11 @@ for name in plist_names:
         env["PM_LIVE_PAUSE_FILE"] = str(root / "data/live_paused.flag")
     data["EnvironmentVariables"] = env
     data["WorkingDirectory"] = str(root)
+    # launchd cannot reach the external disk the project lives on
+    # (2026-10-29); the granted Python opens it on the job's behalf.
+    sys.path.insert(0, str(root / "scripts"))
+    from launchd_external_bridge import bridge
+    data = bridge(data, home=default_home(user), root=str(root))
     dst = dst_dir / name
     with dst.open("wb") as f:
         plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)
