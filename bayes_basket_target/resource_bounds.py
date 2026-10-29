@@ -392,7 +392,15 @@ MAX_JSON_NODES = 500_000
 # moved cold (OOS evaluations 0.57, envelopes 0.42, preselection 0.41,
 # training facts 0.38); the cold offload had refused every table since one
 # WAL yield interrupted its plan.  Back to 72 GiB once the inflow is cut.
-MAX_TARGET_DB_BYTES = 75776 * MIB
+# Raised 74 -> 100 GiB on 2026-10-29, a bridge on the user's ruling
+# (「桥接上限到100」).  The store sat at 74.00 GiB in use with no free page
+# and every writer stopped; the whole-store rebuild of the same day (two
+# leaf pages handed out twice at the 10-27 ceiling hit) compacted rows to
+# ~65 GiB before secondary indexes, so 74 would have left a day or two.  The
+# project, store included, now lives on the external disk
+# (/Volumes/weather_data/weather, user 「将整个项目全部移动至外置硬盘」), which
+# has terabytes free, so the ceiling is no longer bounded by the volume.
+MAX_TARGET_DB_BYTES = 102400 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
