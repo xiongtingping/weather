@@ -13,6 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SHARED_LIVE_DB = (ROOT / "data" / "archive.db").resolve()
 DEFAULT_TARGET_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+#: Where the store itself lives (2026-10-29, user 「ssd能否做一个临时的ssot，
+#: 然后阶段性的搬迁至外置盘」): the repository is on the external spinning disk,
+#: the store stays on the internal SSD, and ``DEFAULT_TARGET_DB`` is a symlink
+#: to exactly this file.  It is the one symlink the boundary accepts.
+HOT_TARGET_DB = Path.home() / "weather_hot" / "bayes_basket_target_ssot.db"
 DEFAULT_TARGET_PAUSE_MARKER = ROOT / "data" / "bayes_basket_target_migration_paused.flag"
 PROTECTED_RESIDENT_WS_MANIFEST = (ROOT / "data" / "market_ws_latest_quotes.json").resolve()
 DEFAULT_TARGET_WS_MANIFEST = ROOT / "data" / "bayes_basket_target_official_ws_manifest.json"
@@ -34,7 +39,7 @@ def resolve_target_database(path: Path | str | None = None) -> Path:
     """Resolve and validate a target DB path without creating it."""
 
     candidate = DEFAULT_TARGET_DB if path is None else Path(path).expanduser()
-    if candidate.is_symlink():
+    if candidate.is_symlink() and candidate.resolve() != HOT_TARGET_DB.resolve():
         raise ValueError("target_database_symlink_forbidden")
     resolved = candidate.resolve()
     if resolved == SHARED_LIVE_DB:
@@ -67,6 +72,7 @@ __all__ = [
     "DEFAULT_TARGET_DB",
     "DEFAULT_TARGET_PAUSE_MARKER",
     "DEFAULT_TARGET_WS_MANIFEST",
+    "HOT_TARGET_DB",
     "PROTECTED_RESIDENT_WS_MANIFEST",
     "ROOT",
     "SHARED_LIVE_DB",
