@@ -262,6 +262,41 @@ def _sidecar(target: Path) -> Path:
     return target.with_name(target.name + ".building.json")
 
 
+def _readable_extent(conn: sqlite3.Connection, name: str) -> tuple[list[int], list[int]]:
+    """A table's rowids split into the readable and the unreadable.
+
+    Only for a table whose own b-tree no longer answers ``MAX(rowid)``
+    (2026-10-28: ``basket_probability_evidence_artifact``'s last leaf, page
+    2433788, was handed out again as another row's overflow page at the
+    10-27 03:43Z ceiling hit, so its one row reads as "database disk image
+    is malformed").  The rowids come off an index, which is intact, and each
+    row is read whole once; a row that cannot be read is named, never
+    guessed.  ``([], [])`` when ``MAX(rowid)`` answers: nothing to do.
+    """
+
+    try:
+        conn.execute(f'SELECT MAX(rowid) FROM main."{name}"').fetchone()
+        conn.execute(f'SELECT * FROM main."{name}" ORDER BY rowid DESC LIMIT 1').fetchall()
+        return [], []
+    except sqlite3.DatabaseError:
+        pass
+    indexes = [str(r[1]) for r in conn.execute(f'PRAGMA main.index_list("{name}")')]
+    if not indexes:
+        raise sqlite3.DatabaseError(f"{name}: unreadable and no index to enumerate it by")
+    rowids = sorted({int(r[0]) for r in conn.execute(
+        f'SELECT rowid FROM main."{name}" INDEXED BY "{indexes[0]}"'
+    )})
+    readable: list[int] = []
+    lost: list[int] = []
+    for rowid in rowids:
+        try:
+            conn.execute(f'SELECT * FROM main."{name}" WHERE rowid=?', (rowid,)).fetchall()
+            readable.append(rowid)
+        except sqlite3.DatabaseError:
+            lost.append(rowid)
+    return readable, lost
+
+
 def fingerprint(source: Path) -> dict[str, object]:
     """What the source holds, taken once where reading it is cheap.
 
@@ -277,8 +312,18 @@ def fingerprint(source: Path) -> dict[str, object]:
     try:
         objects = _objects(conn)
         tables = [name for name, _sql in objects["table"]]
-        counts = {n: int(conn.execute(f'SELECT COUNT(*) FROM main."{n}"').fetchone()[0]) for n in tables}
-        max_rowid = {n: conn.execute(f'SELECT MAX(rowid) FROM main."{n}"').fetchone()[0] for n in tables}
+        counts: dict[str, int] = {}
+        max_rowid: dict[str, object] = {}
+        unreadable: dict[str, list[int]] = {}
+        for n in tables:
+            readable, lost = _readable_extent(conn, n)
+            if lost:
+                unreadable[n] = lost
+                counts[n] = len(readable)
+                max_rowid[n] = max(readable) if readable else None
+            else:
+                counts[n] = int(conn.execute(f'SELECT COUNT(*) FROM main."{n}"').fetchone()[0])
+                max_rowid[n] = conn.execute(f'SELECT MAX(rowid) FROM main."{n}"').fetchone()[0]
         digests = {
             n: _digest(conn, "main", n, _columns(conn, "main", n))
             for n in DIGEST_TABLES if n in counts
@@ -294,6 +339,7 @@ def fingerprint(source: Path) -> dict[str, object]:
         "source": str(source), "source_bytes": source.stat().st_size,
         "objects": {kind: sorted(n for n, _sql in listed) for kind, listed in objects.items()},
         "counts": counts, "max_rowid": max_rowid, "digests": digests, "sequence": sequence,
+        "unreadable_rows": unreadable,
     }
 
 
@@ -318,6 +364,25 @@ def _copy_rows(
         dedupe_at = cols.index(DEDUPE_COLUMN) if (
             transform and name == DEDUPE_TABLE and DEDUPE_COLUMN in cols) else None
         transformed = fold_at is not None or dedupe_at is not None
+        readable, lost = _readable_extent(conn, name)
+        if lost:
+            # Copied by named rowids only: a range read would walk into the
+            # page that is no longer this table's.
+            state.setdefault("unreadable_rows", {})[name] = lost
+            last = conn.execute(f'SELECT MAX(rowid) FROM out."{name}"').fetchone()[0]
+            todo = [r for r in readable if last is None or r > last]
+            for at in range(0, len(todo), 500):
+                chunk = todo[at:at + 500]
+                conn.execute(
+                    f'INSERT INTO out."{name}"(rowid,{listed})'
+                    f' SELECT rowid,{listed} FROM main."{name}"'
+                    f' WHERE rowid IN ({",".join("?" for _ in chunk)}) ORDER BY rowid',
+                    chunk,
+                )
+                conn.commit()
+            on_table()
+            print(f"  {name:56} +{len(todo):>10,}  skipped unreadable {lost}", flush=True)
+            continue
         src_max = conn.execute(f'SELECT MAX(rowid) FROM main."{name}"').fetchone()[0]
         if src_max is None:
             continue

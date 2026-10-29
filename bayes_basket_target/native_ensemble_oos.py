@@ -1574,11 +1574,40 @@ def _equal_weight_diagnostic(
 EQUAL_WEIGHT_DIAGNOSTIC_STORED_AS = "derived_comparisons_recomputable_v1"
 
 
+#: What an evaluation row keeps of each scored day.
+STORED_DAILY_SCORE_KEYS = frozenset({"event_date", "holdout_grid", "learned", "climate"})
+#: What an evaluation row keeps of the gate record: its verdict and the
+#: membership mode the stable-pool gate filters on, not the per-leg detail
+#: (own-holdout gate, breakage floor, window dates and means: ~0.7 KB a row,
+#: read by nothing; user 「不抬，先砍入流」 2026-10-29).
+STORED_GATE_KEYS = frozenset({
+    "membership_mode", "pass", "primary_pass", "path", "rule", "scoring",
+    "nll_relative_gain", "brier_relative_loss", "crps_relative_loss",
+    "brier_guard_pass", "crps_guard_pass", "guardrail_max_relative_loss",
+    "window_day_count", "window_max_days",
+})
+
+
+def stored_gate(gate: Mapping[str, Any]) -> dict[str, Any]:
+    """The gate record as an evaluation row stores it."""
+
+    return {k: v for k, v in gate.items() if k in STORED_GATE_KEYS}
+
+
 def stored_equal_weight_diagnostic(matrix: Mapping[str, Any]) -> dict[str, Any]:
     """The diagnostic as an evaluation row stores it: its derived
     comparisons dropped, everything they are computed from kept."""
 
     stored = {k: v for k, v in matrix.items() if k != "comparisons"}
+    # 2026-10-29 (user 「不抬，先砍入流」): of each day only what the
+    # stable-pool gate reads (``stable_pool_gate_row_days``: learned and
+    # climate) is kept; the other schemes' per-day scores were 1.4 KB of a
+    # 5.1 KB row, 80k rows a day, read by nothing.
+    if "scheme_daily_scores" in stored:
+        stored["scheme_daily_scores"] = [
+            {k: v for k, v in dict(row).items() if k in STORED_DAILY_SCORE_KEYS}
+            for row in stored["scheme_daily_scores"]
+        ]
     if "shadow_schemes" in stored:
         stored["shadow_schemes"] = {
             label: {k: v for k, v in dict(scheme).items() if not str(k).startswith("vs_")}
@@ -6941,7 +6970,7 @@ def _evaluation_identity(
         "oos_metrics_json": _json({
             **candidate["oos_metrics"],
             **(
-                {"gate": candidate["oos_gate"]}
+                {"gate": stored_gate(candidate["oos_gate"])}
                 if isinstance(candidate.get("oos_gate"), Mapping)
                 else {}
             ),

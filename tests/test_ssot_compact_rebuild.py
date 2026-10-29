@@ -170,3 +170,47 @@ def test_a_finished_target_is_never_resumed_into(tmp_path: Path) -> None:
     _source(source)
     assert module.stage(source=source, staging=staging, budget_seconds=600)["state"] == "STAGED"
     assert module.stage(source=source, staging=staging, budget_seconds=600)["state"] == "REFUSED_TARGET_EXISTS"
+
+
+def test_a_row_on_a_page_no_longer_its_tables_is_skipped_and_named(tmp_path: Path) -> None:
+    """2026-10-28: one table's last leaf was handed out again as another
+    row's overflow page.  The rest of the table copies, the lost row is
+    named in the fingerprint and the stage receipt, and counts agree."""
+
+    mod = _module()
+    src = tmp_path / "src.db"
+    c = sqlite3.connect(src)
+    c.execute("CREATE TABLE art(artifact_id TEXT PRIMARY KEY, body TEXT)")
+    for i in range(200):
+        c.execute("INSERT INTO art VALUES(?,?)", (f"a{i:04d}", "x" * 900))
+    c.commit()
+    root = c.execute("SELECT rootpage FROM sqlite_master WHERE name='art'").fetchone()[0]
+    page_size = c.execute("PRAGMA page_size").fetchone()[0]
+    c.close()
+    # Walk the root's right-most pointer to the last leaf and blank its type byte.
+    raw = bytearray(src.read_bytes())
+    at = (root - 1) * page_size
+    assert raw[at] == 5                                    # interior table page
+    right = int.from_bytes(raw[at + 8:at + 12], "big")
+    raw[(right - 1) * page_size] = 0
+    src.write_bytes(bytes(raw))
+
+    probe = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    readable, lost = mod._readable_extent(probe, "art")
+    probe.close()
+    assert lost and len(readable) + len(lost) == 200
+
+    doc = mod.fingerprint(src)
+    assert doc["unreadable_rows"] == {"art": lost}
+    assert doc["counts"]["art"] == len(readable)
+
+    staging = tmp_path / "stage.db"
+    assert mod.stage(source=src, staging=staging, budget_seconds=60)["state"] == "STAGED"
+    note = json.loads((staging.with_name(staging.name + ".staged.json")).read_text())
+    assert note["unreadable_rows"] == {"art": lost}
+    out = tmp_path / "out.db"
+    assert mod.build(source=staging, target=out, budget_seconds=60, expected=doc)["state"] == "BUILT"
+    check = sqlite3.connect(out)
+    assert sorted(r[0] for r in check.execute("SELECT rowid FROM art")) == readable
+    assert check.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    check.close()
