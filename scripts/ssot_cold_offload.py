@@ -467,6 +467,9 @@ def serving_arithmetic_floor(conn: sqlite3.Connection) -> str | None:
 #: Pinned by the test to ``scripts/fit_deterministic_feature_gate.py`` and
 #: ``scripts/p1_likelihood_refit_sweep.sh``.
 FEATURE_GATE_WINDOW_DAYS = 60
+#: ``run``'s default ``local_reference``: the store's own (resolved) file, the
+#: device the tier must differ from.  ``None`` skips the check (tests).
+SSOT_DEVICE = object()
 #: How far back a truth repair may revise a settled day
 #: (``scripts/settlement_truth_reconciliation.py`` REPAIR_MAX_DAYS; the daily
 #: repair looks back 10).  A revision gives every fact of that day a new
@@ -2665,7 +2668,7 @@ def run(
     batch_rows: int = BATCH_ROWS,
     batch_bytes: int = BATCH_BYTES,
     min_cold_free_bytes: int = DEFAULT_COLD_TIER_MIN_FREE_BYTES,
-    local_reference: Path | None = ROOT,
+    local_reference: Path | None | object = SSOT_DEVICE,
     manifest: Path = MANIFEST,
     holds_path: Path = HOLDS,
     estimate_sample: int = DEFAULT_ESTIMATE_SAMPLE,
@@ -2682,6 +2685,12 @@ def run(
 
     started = time.monotonic()
     moment = as_of or _utc_now()
+    if local_reference is SSOT_DEVICE:
+        # The tier must not share a device with the store itself, or a move
+        # frees nothing.  Was the repository root; since 2026-10-29 the
+        # repository is on the external disk with the tier and the store on
+        # the internal SSD, so the root's device refused every run.
+        local_reference = Path(ssot_path).resolve()
     status = (
         cold_tier_status(cold_root, local_reference=local_reference, min_free_bytes=min_cold_free_bytes)
         if cold_root is not None else {"state": "disabled", "root": "", "free_bytes": None}

@@ -433,7 +433,11 @@ _LIVE_ENTRY_SCRIPTS = (
 def test_production_code_never_reaches_for_the_cold_tier() -> None:
     """Asserted on names the code binds and calls, not on how it looks: an
     import of a cold-tier function, an attribute access to one, or a string
-    naming ``/Volumes/`` anywhere in the resident's package or entry scripts."""
+    naming the cold tier (``weather_cold``) anywhere in the resident's package
+    or entry scripts.  The literal was ``/Volumes/`` until 2026-10-29, when the
+    whole repository moved onto that volume (user 「将整个项目全部移动至外置
+    硬盘」): the volume is now a production dependency, the cold tier on it is
+    still not."""
 
     files = [
         path
@@ -448,6 +452,6 @@ def test_production_code_never_reaches_for_the_cold_tier() -> None:
                 offenders += [f"{path.name}:import:{a.name}" for a in node.names if a.name in _COLD_NAMES]
             elif isinstance(node, ast.Attribute) and node.attr in _COLD_NAMES:
                 offenders.append(f"{path.name}:attr:{node.attr}")
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "/Volumes/" in node.value:
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "weather_cold" in node.value:
                 offenders.append(f"{path.name}:literal")
     assert offenders == []
