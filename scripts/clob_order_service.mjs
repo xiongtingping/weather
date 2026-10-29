@@ -3956,9 +3956,21 @@ async function main() {
   });
 }
 
+// Real paths on both sides: the repository is reached through the
+// /Users/xiong/weather symlink (2026-10-29, project on the external disk), and
+// import.meta.url is already resolved while argv[1] is not -- the plain
+// comparison never matched, main() never ran, and the gateway exited 0 after
+// loading its modules, 165 times, with every scope refused for stale equity.
+const realPathOf = (value) => {
+  try {
+    return fs.realpathSync(value);
+  } catch {
+    return path.resolve(value);
+  }
+};
 const invokedAsMain = Boolean(
   process.argv[1]
-  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+  && realPathOf(process.argv[1]) === realPathOf(fileURLToPath(import.meta.url))
 );
 if (invokedAsMain) {
   main().catch((err) => {
