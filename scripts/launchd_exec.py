@@ -19,17 +19,18 @@ cmd = args[split + 1:]
 out = open(opts["--out"], "ab", buffering=0)
 err = open(opts["--err"], "ab", buffering=0) if opts["--err"] != opts["--out"] else out
 os.chdir(opts["--cwd"])
-# Its own process group, so a stop reaches the whole job: a bash wrapper
-# that waits on its Python does not pass SIGTERM on (10-29 the resident
-# outlived its bootout until killed).
-child = subprocess.Popen(
-    cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL, start_new_session=True,
-)
+# Same process group as this launcher, so launchd's SIGKILL at ExitTimeOut
+# still reaches every process of the job; a stop signal is passed to the
+# whole group because a bash wrapper waiting on its Python does not pass
+# SIGTERM on (10-29: the resident outlived its bootout until killed, and in
+# a group of its own it also outlived launchd's SIGKILL).
+child = subprocess.Popen(cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL)
 
 
 def forward(signum, _frame):
+    signal.signal(signum, signal.SIG_IGN)
     try:
-        os.killpg(child.pid, signum)
+        os.killpg(os.getpgrp(), signum)
     except ProcessLookupError:
         pass
 
