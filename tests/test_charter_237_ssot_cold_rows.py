@@ -981,7 +981,7 @@ def _label(conn, fid: str) -> None:
 
 
 def _facts_fixture(store: Path) -> None:
-    """AS_OF 09-27: the facts' window ends 08-11."""
+    """AS_OF 09-27: the facts' window (30 days) ends 08-28."""
 
     conn = sqlite3.connect(store)
     _fact(conn, "d2fact_old", "KLGA", "2026-08-01")
@@ -1020,7 +1020,7 @@ def test_old_facts_move_and_the_named_ones_stay(store: Path, cold: Path, tmp_pat
     receipt = _run(store, cold, tmp_path, apply=True, tables=[FACT])
 
     summary = receipt["tables"][0]
-    assert summary["cutoff_before"] == "2026-08-11"
+    assert summary["cutoff_before"] == "2026-08-28"
     assert summary["kept"] == {
         "named:fk:basket_target_prepared_supersession_receipts.old_training_fact_id": 1,
         "named:live_decision": 1,
@@ -1036,7 +1036,7 @@ def test_the_fact_window_is_tied_to_its_readers() -> None:
     from bayes_basket_target import posterior_store, realisation_store, valuation_store
 
     reconcile = (ROOT / "scripts" / "settlement_truth_reconciliation.py").read_text(encoding="utf-8")
-    assert re.search(r"^MAX_DAYS = (\d+)$", reconcile, re.M).group(1) == str(off.RECONCILIATION_MAX_DAYS)
+    assert re.search(r"^REPAIR_MAX_DAYS = (\d+)$", reconcile, re.M).group(1) == str(off.RECONCILIATION_MAX_DAYS)
     policy = off.POLICY_BY_TABLE[FACT]
     for window in (off.RECONCILIATION_MAX_DAYS, valuation_store.WINDOW_DAYS,
                    realisation_store.WINDOW_DAYS, posterior_store.WINDOW_DAYS):

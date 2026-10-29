@@ -87,6 +87,12 @@ MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024
 # dates of ~51 cities fit inside that with room to spare.
 GAMMA_DAYS_PER_CALL = 3
 MAX_DAYS = 45
+#: How far back ``--repair`` may revise a settled day.  A revision relabels
+#: every training fact of that day, and the facts of older days live in the
+#: cold tier (user 2026-10-29 「缩短热窗口，让冷搬多搬」: the fact window went
+#: 47 -> 30 days), where the label lane cannot relabel them.  The read-only
+#: pass still looks back MAX_DAYS; the daily repair uses 10.
+REPAIR_MAX_DAYS = 28
 
 
 def _now() -> str:
@@ -291,7 +297,7 @@ def run(
     repair_history_path: Path = REPAIR_HISTORY_JSONL,
     client_factory: Any = None,
 ) -> dict[str, Any]:
-    days = max(1, min(MAX_DAYS, int(days)))
+    days = max(1, min(REPAIR_MAX_DAYS if repair_pass else MAX_DAYS, int(days)))
     today = datetime.now(timezone.utc).date()
     start, end = today - timedelta(days=days), today - timedelta(days=1)
     config = load_config()

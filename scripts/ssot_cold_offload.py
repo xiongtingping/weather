@@ -467,11 +467,14 @@ def serving_arithmetic_floor(conn: sqlite3.Connection) -> str | None:
 #: Pinned by the test to ``scripts/fit_deterministic_feature_gate.py`` and
 #: ``scripts/p1_likelihood_refit_sweep.sh``.
 FEATURE_GATE_WINDOW_DAYS = 60
-#: How far back a hand-run truth reconciliation may revise a settled day
-#: (``scripts/settlement_truth_reconciliation.py`` MAX_DAYS; the daily repair
-#: looks back 10).  A revision gives every fact of that day a new label, so a
-#: fact stays while its day can still be revised.  Pinned by the test.
-RECONCILIATION_MAX_DAYS = 45
+#: How far back a truth repair may revise a settled day
+#: (``scripts/settlement_truth_reconciliation.py`` REPAIR_MAX_DAYS; the daily
+#: repair looks back 10).  A revision gives every fact of that day a new
+#: label, so a fact stays while its day can still be revised.  Was the
+#: read-only pass's 45 until 2026-10-29 (user 「缩短热窗口，让冷搬多搬」): the
+#: repair is now capped at 28, the fact window follows it to 30.  Pinned by
+#: the test.
+RECONCILIATION_MAX_DAYS = 28
 #: The native members the weights/OOS fit reads: ROLLING_TRAIN_WINDOW_DAYS
 #: before a key's own last DEFAULT_MIN_HOLDOUT_DAYS holdout days.  A key's
 #: holdout lags the newest closed day when its lane misses days (the d2 lane
@@ -526,7 +529,10 @@ def metar_trajectory_training_floor(conn: sqlite3.Connection) -> str | None:
         try:
             # Not mode=ro: a WAL file whose writer has closed has no -shm,
             # and a read-only open cannot make one.
-            cache = sqlite3.connect(str(path))
+            # The resident writes this cache every cycle, and since 10-29 it
+            # sits on the external spinning disk where its writer holds the
+            # lock longer: wait for it rather than refuse the table.
+            cache = sqlite3.connect(str(path), timeout=60.0)
             cache.execute("PRAGMA query_only=1")
             try:
                 frozen = {
