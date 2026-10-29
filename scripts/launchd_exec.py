@@ -19,12 +19,17 @@ cmd = args[split + 1:]
 out = open(opts["--out"], "ab", buffering=0)
 err = open(opts["--err"], "ab", buffering=0) if opts["--err"] != opts["--out"] else out
 os.chdir(opts["--cwd"])
-child = subprocess.Popen(cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL)
+# Its own process group, so a stop reaches the whole job: a bash wrapper
+# that waits on its Python does not pass SIGTERM on (10-29 the resident
+# outlived its bootout until killed).
+child = subprocess.Popen(
+    cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL, start_new_session=True,
+)
 
 
 def forward(signum, _frame):
     try:
-        child.send_signal(signum)
+        os.killpg(child.pid, signum)
     except ProcessLookupError:
         pass
 
