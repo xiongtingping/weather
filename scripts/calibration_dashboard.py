@@ -12409,6 +12409,168 @@ def collect_fade_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def collect_pair_maker_lane(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter 269: 配对挂单线 -- its switch and settings, every plan it formed
+    (``pair_maker_plans``: the mode bucket, the formation, each side's fills,
+    matched pairs and their cost), its merges, and how each plan settled.
+
+    User 2026-10-30 「前端加开关和数据统计」.  Read only.  A plan's ledger is
+    the one the lane itself wrote on its last pass.  Settled, a plan pays its
+    YES shares if the day landed on its bucket and its NO shares otherwise,
+    so a matched pair pays 1 either way and only the unmatched side rides the
+    outcome; a 0.999 recycle sale is shared over the token's live buys by
+    filled shares (the 反向线 reading)."""
+
+    lanes = _load_strategy_lanes()
+    cfg = lanes["lanes"].get("pair_maker") or {}
+    out: dict[str, Any] = {
+        "available": True,
+        "settings": {k: cfg.get(k) for k in (
+            "enabled", "rule", "pair_cost_cap", "lead_side", "rung_shares", "rung_minutes",
+            "quote_window_hours", "min_hours_to_settlement", "stations", "formation_mid_sum",
+            "max_unmatched_usdc", "max_unmatched_ratio", "max_station_day_usdc", "max_cash_fraction",
+            "merge", "min_merge_shares", "enabled_at_utc",
+        )},
+        "plans": {"available": False},
+    }
+    if not _table_exists(conn, "pair_maker_plans"):
+        return out
+    rows = conn.execute(
+        "SELECT station_id,event_date,bucket,plan_state,formed_at_utc,window_ends_utc,plan_json,"
+        " ledger_json,last_pass_at_utc FROM pair_maker_plans ORDER BY formed_at_utc DESC"
+    ).fetchall()
+    merges: dict[str, list[dict[str, Any]]] = {}
+    if _table_exists(conn, "pair_maker_merges"):
+        for plan_id, shares, mode, state, at in conn.execute(
+            "SELECT plan_id,shares,mode,state,created_at_utc FROM pair_maker_merges ORDER BY created_at_utc"
+        ):
+            merges.setdefault(str(plan_id), []).append(
+                {"shares": float(shares or 0.0), "mode": mode, "state": state, "at_utc": at})
+    plans: list[dict[str, Any]] = []
+    tokens: set[str] = set()
+    for station, day, bucket, state, formed, ends, plan_json, ledger_json, last_pass in rows:
+        try:
+            plan = json.loads(plan_json or "{}")
+        except ValueError:
+            plan = {}
+        try:
+            book = json.loads(ledger_json or "{}") or {}
+        except ValueError:
+            book = {}
+        side_tokens = plan.get("tokens") or {}
+        tokens.update(str(t) for t in side_tokens.values() if t)
+        form = plan.get("formation") or {}
+        rungs = plan.get("rungs") or []
+        plans.append({
+            "station_id": str(station), "event_date": str(day), "bucket": str(bucket),
+            "plan_state": state, "formed_at_utc": formed, "window_ends_utc": ends,
+            "last_pass_at_utc": last_pass, "plan_id": plan.get("plan_id"),
+            "hours_to_settlement": plan.get("hours_to_settlement"),
+            "mid_sum": form.get("mid_sum"), "formation_mid": form.get("mid"),
+            "rungs": {side: sum(1 for r in rungs if r.get("side") == side and r.get("intent_id"))
+                      for side in ("YES", "NO")},
+            "tokens": side_tokens,
+            "yes_shares": float((book.get("YES") or {}).get("shares") or 0.0),
+            "yes_cost_usdc": float((book.get("YES") or {}).get("cost_usdc") or 0.0),
+            "yes_resting": bool((book.get("YES") or {}).get("resting")),
+            "no_shares": float((book.get("NO") or {}).get("shares") or 0.0),
+            "no_cost_usdc": float((book.get("NO") or {}).get("cost_usdc") or 0.0),
+            "no_resting": bool((book.get("NO") or {}).get("resting")),
+            "matched_shares": float(book.get("matched_shares") or 0.0),
+            "pair_cost": book.get("pair_cost"),
+            "unmatched_shares": float(book.get("unmatched_shares") or 0.0),
+            "unmatched_side": book.get("unmatched_side"),
+            "merges": merges.get(str(plan.get("plan_id")), []),
+        })
+    # Every live buy and sell of the lane's tokens, for the recycle-sale share.
+    bought: dict[str, float] = {}
+    sells: dict[str, dict[str, float]] = {}
+    if tokens and _table_exists(conn, "basket_target_order_intents"):
+        marks = ",".join("?" for _ in tokens)
+        for token, action, shares, amount, istate in conn.execute(
+            "SELECT i.token_id,i.order_action,COALESCE(r.filled_size,0),COALESCE(r.filled_notional_usdc,0),i.state"
+            " FROM basket_target_order_intents i"
+            " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+            f" WHERE i.live_submit_authorized=1 AND i.token_id IN ({marks})", tuple(tokens)
+        ):
+            if str(action) == "BUY":
+                bought[str(token)] = bought.get(str(token), 0.0) + float(shares or 0.0)
+            elif str(action) == "SELL":
+                slot = sells.setdefault(str(token), {"shares": 0.0, "amount": 0.0, "uncertain": 0.0})
+                slot["shares"] += float(shares or 0.0)
+                slot["amount"] += float(amount or 0.0)
+                slot["uncertain"] += float(str(istate) == "reconcile_required")
+    settled = _live_settled_buckets(conn, {(p["station_id"], p["event_date"]) for p in plans})
+    for p in plans:
+        landed = settled.get((p["station_id"], p["event_date"]))
+        p["settled_bucket"] = landed[0] if landed else None
+        cost = p["yes_cost_usdc"] + p["no_cost_usdc"]
+        p["cost_usdc"] = cost
+        p["locked_usdc"] = (p["matched_shares"] * (1.0 - float(p["pair_cost"]))
+                            if p["pair_cost"] is not None else 0.0)
+        payout, sold_any, uncertain = 0.0, 0.0, False
+        for side, held in (("YES", p["yes_shares"]), ("NO", p["no_shares"])):
+            token = str(p["tokens"].get(side) or "")
+            sale = sells.get(token) or {}
+            share = held / bought[token] if bought.get(token) else 0.0
+            sold = min(held, float(sale.get("shares", 0.0)) * share)
+            payout += float(sale.get("amount", 0.0)) * share
+            sold_any += sold
+            uncertain = uncertain or float(sale.get("uncertain", 0.0)) > 0
+            if landed and held > 0:
+                hit = (landed[0] == p["bucket"]) if side == "YES" else (landed[0] != p["bucket"])
+                payout += (held - sold) if hit else 0.0
+        closed = cost > 0 and not uncertain and landed is not None and p["plan_state"] == "done"
+        p["sold_shares"] = sold_any
+        p["payout_usdc"] = payout if closed else None
+        p["pnl_usdc"] = payout - cost if closed else None
+    filled = [p for p in plans if p["cost_usdc"] > 0]
+    paired = [p for p in plans if p["matched_shares"] > 0]
+    closed_plans = [p for p in filled if p["pnl_usdc"] is not None]
+    matched = sum(p["matched_shares"] for p in plans)
+    pair_spend = sum(p["matched_shares"] * float(p["pair_cost"]) for p in paired)
+    stake = sum(p["cost_usdc"] for p in closed_plans)
+    payout = sum(p["payout_usdc"] or 0.0 for p in closed_plans)
+    by_day: dict[str, dict[str, float]] = {}
+    for p in plans:
+        slot = by_day.setdefault(p["event_date"], {
+            "plans": 0, "filled_plans": 0, "paired_plans": 0, "matched_shares": 0.0,
+            "cost_usdc": 0.0, "pnl_usdc": 0.0, "closed": 0})
+        slot["plans"] += 1
+        slot["filled_plans"] += int(p["cost_usdc"] > 0)
+        slot["paired_plans"] += int(p["matched_shares"] > 0)
+        slot["matched_shares"] += p["matched_shares"]
+        slot["cost_usdc"] += p["cost_usdc"]
+        if p["pnl_usdc"] is not None:
+            slot["closed"] += 1
+            slot["pnl_usdc"] += p["pnl_usdc"]
+    out["plans"] = {
+        "available": True, "rows": plans[:100],
+        "total": len(plans), "active": sum(1 for p in plans if p["plan_state"] == "active"),
+        "filled": len(filled), "paired": len(paired),
+        "pair_rate": len(paired) / len(filled) if filled else None,
+        "yes_shares": sum(p["yes_shares"] for p in plans), "no_shares": sum(p["no_shares"] for p in plans),
+        "matched_shares": matched, "avg_pair_cost": pair_spend / matched if matched else None,
+        "locked_usdc": sum(p["locked_usdc"] for p in plans),
+        "unmatched_shares": sum(p["unmatched_shares"] for p in plans),
+        "unmatched_cost_usdc": sum(
+            (p["yes_cost_usdc"] / p["yes_shares"] if p["unmatched_side"] == "YES" and p["yes_shares"]
+             else p["no_cost_usdc"] / p["no_shares"] if p["unmatched_side"] == "NO" and p["no_shares"]
+             else 0.0) * p["unmatched_shares"] for p in plans),
+        "spent_usdc": sum(p["cost_usdc"] for p in plans),
+        "open_cost_usdc": sum(p["cost_usdc"] for p in filled if p["pnl_usdc"] is None),
+        "closed": len(closed_plans), "wins": sum(1 for p in closed_plans if (p["pnl_usdc"] or 0.0) > 0),
+        "stake_usdc": stake, "payout_usdc": payout, "pnl_usdc": payout - stake,
+        "roi": (payout - stake) / stake if stake > 0 else None,
+        "merges": sum(len(p["merges"]) for p in plans),
+        "merged_shares": sum(m["shares"] for p in plans for m in p["merges"] if m["state"] == "MERGED"),
+        "first_formed_utc": min((p["formed_at_utc"] for p in plans), default=None),
+        "last_pass_utc": max((p["last_pass_at_utc"] or "" for p in plans), default=None) or None,
+        "by_day": [{"event_date": d, **v} for d, v in sorted(by_day.items(), reverse=True)],
+    }
+    return out
+
+
 # Station days whose Proper-lane orders the operator took out of the lane's
 # statistics (user 2026-10-05: 「Proper 下注线去掉CYYZ 2026-09-29这个订单的统计」
 # -- its one order, 20°C YES, filled 2026-09-28 05:03Z under the v2 rule).
@@ -13793,6 +13955,8 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     "fade_lanes",
     # Charter 257: the copy-follow lane's page, read on every run like the lanes above.
     "copy_follow_lane",
+    # Charter 269: the pair maker's page (user 2026-10-30 「前端加开关和数据统计」).
+    "pair_maker_lane",
     # Charter 254: the lanes' shadow legs beside them -- one small table and
     # one file, read on every run like the lanes they shadow.
     "realisation_layer",
@@ -15520,6 +15684,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "tail_short_lane", collect_tail_short_lane, conn
     )
     fade_lanes = _cached_section("fade_lanes", collect_fade_lanes, conn)
+    pair_maker_lane = _cached_section(
+        "pair_maker_lane", collect_pair_maker_lane, conn
+    )
     copy_follow_lane = _cached_section(
         "copy_follow_lane", collect_copy_follow_lane, conn
     )
@@ -15867,6 +16034,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "proper_bet_lane": proper_bet_lane,
         "tail_short_lane": tail_short_lane,
         "fade_lanes": fade_lanes,
+        "pair_maker_lane": pair_maker_lane,
         # Charter 279: one file read, for the P0 / P0-M cards' shadow comparison.
         "p0_ngr": collect_p0_ngr(),
         "copy_follow_lane": copy_follow_lane,
@@ -18063,11 +18231,11 @@ function moneyDataBoard(){
   if(!M.available) return `<div class="card"><span class="dot amber"></span>
     ${h(M.reason || "实盘还读不出来")}。</div>`;
   const NAMES = {proper_bet:"Proper", tail_short:"远尾做空", tiebreak:"秤砣线",
-    basket:"篮子", copy_follow:"跟单线", fade_p0m:"反向A", fade_p0:"反向B", consensus_noon:"共识线"};
+    basket:"篮子", copy_follow:"跟单线", pair_maker:"配对挂单", fade_p0m:"反向A", fade_p0:"反向B", consensus_noon:"共识线"};
   // 同心线 and P1 尾段 have no column (user 2026-10-05: 去掉同心线; 2026-10-09:
   // 去掉p1尾端线数据看板); their money stays in 合计, the whole book.  Columns in
   // this fixed order, never re-sorted.
-  const ORDER = ["proper_bet","tail_short","fade_p0m","fade_p0","consensus_noon","tiebreak","basket","copy_follow"];
+  const ORDER = ["proper_bet","tail_short","fade_p0m","fade_p0","consensus_noon","tiebreak","basket","copy_follow","pair_maker"];
   const BL = M.by_lane || {};
   const lanes = ORDER.filter(k => BL[k]);
   const RW = M.risk || {}, EW = M.economics || {};
@@ -18797,6 +18965,12 @@ const MONEY_BOARD = [
      ["fadelanes", "反向线 B · 宪章 277",
       () => safe(() => fadeLanes(), "反向线"),
       "sec-fade-lanes"],
+     // Charter 269: the pair maker's own page (user 2026-10-30 「前端加开关和
+     // 数据统计」) -- every plan it formed, each side's fills, the pairs and
+     // their cost, and how each plan settled.
+     ["pairmaker", "配对挂单线 · 宪章 269",
+      () => safe(() => pairMakerLane(), "配对挂单线"),
+      "sec-pair-maker"],
      // Charter 256/257: the copy-follow lane's own page -- the cluster's
      // taker fills it saw and why each was admitted or refused, the legs it
      // sent, and how they settled (user 2026-10-09: 前端增加对应的跟单线数据统计看板).
@@ -19215,6 +19389,44 @@ function fadeLanes(){
   return one("fade_p0");
 }
 
+// 「配对挂单线」(charter 269): its settings, every plan it formed, each side's
+// fills, the matched pairs and their cost, and how each plan settled.  Read
+// only, like every lane page.
+function pairMakerLane(){
+  const T=D.pair_maker_lane||{};
+  if(!T.available) return `<div class="muted">配对挂单线读数这一轮没有生成。</div>`;
+  const S=T.settings||{}, P=T.plans||{};
+  const usd=v=>v==null?"—":"$"+(+v).toFixed(2);
+  const pct=v=>v==null?"—":((+v)*100).toFixed(1)+"%";
+  const p3=v=>v==null?"—":(+v).toFixed(3);
+  const n2=v=>v==null?"—":(+v).toFixed(2);
+  const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
+  const ms=S.formation_mid_sum||[];
+  const head=`<div class="card"><b>配对挂单线</b> <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
+    <span class="muted">盘口成形（中价合计 ${h(ms[0]??"—")}–${h(ms[1]??"—")}、众数桶双边）即在市场众数桶先挂 ${h(S.lead_side||"YES")} 买一+1 积累，另一侧按 ≤${h(S.pair_cost_cap)}−领先侧均价补配对；每档 ${h(S.rung_shares)} 股、${h(S.rung_minutes)} 分钟重挂，报价窗 ${h(S.quote_window_hours)}h、距结算 &gt; ${h(S.min_hours_to_settlement)}h；未配平成本 ≤ ${usd(S.max_unmatched_usdc)}、比例 &lt; ${pct(S.max_unmatched_ratio)}；每站日 ≤ ${usd(S.max_station_day_usdc)}、全线 ≤ 现金 ${pct(S.max_cash_fraction)}；站 ${h((S.stations||[]).join("/")||"全部")}；merge ${h(S.merge||"—")}（≥${h(S.min_merge_shares)} 对）。顶部开关可停。</span>
+    <div class="muted">开启 ${h(S.enabled_at_utc||"—")} · 首个计划 ${h(P.first_formed_utc||"—")} · 最近一轮 ${h(P.last_pass_utc||"—")}</div></div>`;
+  if(!P.available) return head+`<div class="muted" style="margin-top:8px">还没有配对计划表。</div>`;
+  const totals=`<div class="grid g3" style="margin-top:8px">
+    ${tile("计划 / 在挂 / 有成交 / 配成",`${P.total} / ${P.active} / ${P.filled} / ${P.paired}`,`配成率（有成交的计划里）${pct(P.pair_rate)}`)}
+    ${tile("已配对 / 平均配对成本",`${n2(P.matched_shares)} 对 / ${p3(P.avg_pair_cost)}`,`锁定利润 ${usd(P.locked_usdc)} · merge ${P.merges} 次（已合并 ${n2(P.merged_shares)} 股）`)}
+    ${tile("成交股 YES / NO",`${n2(P.yes_shares)} / ${n2(P.no_shares)}`,`未配平 ${n2(P.unmatched_shares)} 股 · 成本 ${usd(P.unmatched_cost_usdc)}`)}
+    ${tile("实付 / 未结算",`${usd(P.spent_usdc)} / ${usd(P.open_cost_usdc)}`,`已结束 ${P.closed} 个计划`)}
+    ${tile("已结束盈亏 / ROI",`${usd(P.pnl_usdc)} / ${P.closed?pct(P.roi):"—"}`,`投入 ${usd(P.stake_usdc)} · 回款 ${usd(P.payout_usdc)} · 盈利 ${P.wins} 个`)}
+  </div>`;
+  const days=(P.by_day||[]).map(d=>`<tr><td class="mono">${h(d.event_date)}</td><td class="mono">${h(d.plans)}</td><td class="mono">${h(d.filled_plans)}</td><td class="mono">${h(d.paired_plans)}</td><td class="mono">${n2(d.matched_shares)}</td><td class="mono">${usd(d.cost_usdc)}</td><td class="mono ${d.closed?((+d.pnl_usdc)>=0?"up":"down"):"muted"}">${d.closed?usd(d.pnl_usdc):"—"}</td></tr>`).join("");
+  const dayTable=`<div class="card" style="margin-top:8px"><b>按事件日</b>${days?`<div class="scroll" style="min-width:0;max-width:100%;max-height:360px"><table><thead><tr><th>事件日</th><th>计划</th><th>有成交</th><th>配成</th><th>配对股</th><th>实付</th><th>已结束盈亏</th></tr></thead><tbody>${days}</tbody></table></div>`:"<div class='muted'>—</div>"}</div>`;
+  const side=(sh,cost,resting)=>`${n2(sh)} @ ${sh>0?p3(cost/sh):"—"}${resting?" <span class='pill amber'>挂</span>":""}`;
+  const rows=(P.rows||[]).map(p=>`<tr><td class="mono">${h((p.formed_at_utc||"").slice(5,16))}</td><td>${h(p.station_id)}</td><td class="mono">${h(p.event_date)}</td><td>${h(p.bucket)}</td>
+    <td><span class="pill ${p.plan_state==="active"?"green":""}">${p.plan_state==="active"?"在挂":"结束"}</span></td><td class="mono">${p3(p.mid_sum)}</td>
+    <td class="mono">${side(p.yes_shares,p.yes_cost_usdc,p.yes_resting)}</td><td class="mono">${side(p.no_shares,p.no_cost_usdc,p.no_resting)}</td>
+    <td class="mono">${n2(p.matched_shares)}</td><td class="mono">${p3(p.pair_cost)}</td>
+    <td class="mono">${p.unmatched_shares>0?`${n2(p.unmatched_shares)} ${h(p.unmatched_side||"")}`:"—"}</td><td class="mono">${usd(p.cost_usdc)}</td>
+    <td>${p.settled_bucket?h(p.settled_bucket):"未结算"}</td><td class="mono ${p.pnl_usdc==null?"muted":((+p.pnl_usdc)>=0?"up":"down")}">${p.pnl_usdc==null?"—":usd(p.pnl_usdc)}</td></tr>`).join("");
+  const table=`<details style="margin-top:8px;min-width:0;max-width:100%" open><summary>配对计划（${(P.rows||[]).length} 个）</summary>
+    ${rows?`<div class="scroll" style="min-width:0;max-width:100%;max-height:520px"><table><thead><tr><th>成形</th><th>站</th><th>事件日</th><th>众数桶</th><th>状态</th><th>中价合计</th><th>YES 股 @ 均价</th><th>NO 股 @ 均价</th><th>配对股</th><th>配对成本</th><th>未配平</th><th>实付</th><th>结算桶</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>`:"<div class='muted'>还没有计划。</div>"}</details>`;
+  return head+totals+dayTable+table;
+}
+
 // 「跟单线」(charters 256/257): the eight-wallet cluster's taker fills as the
 // lane read them, admitted or refused by name; its plans, sends and legs;
 // and how the legs settled.  Read only, like every lane page.
@@ -19318,7 +19530,7 @@ function reliabilityChart(cfg){
 // the board has no name for prints its key and sorts last.
 const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",pair_maker:"配对挂单",
   fade_p0m:"反向A",fade_p0:"反向B",consensus_noon:"共识线",p1_consensus:"同心线",p1_tail:"P1 尾段"};
-const TC_LANE_ORDER=["proper_bet","tail_short","fade_p0m","fade_p0","consensus_noon","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
+const TC_LANE_ORDER=["proper_bet","tail_short","fade_p0m","fade_p0","consensus_noon","tiebreak","basket","copy_follow","pair_maker","p1_consensus","p1_tail"];
 const tcLaneSort=(a,b)=>{const i=TC_LANE_ORDER.indexOf(a),j=TC_LANE_ORDER.indexOf(b);
   return (i<0?99:i)-(j<0?99:j)||String(a).localeCompare(String(b));};
 // 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
@@ -19943,6 +20155,7 @@ function liveControlStrip(){
     ${group("秤砣线", "tiebreak", laneSwitch("tiebreak")
       + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
     ${group("跟单线", "", laneSwitch("copy_follow"))}
+    ${group("配对挂单", "", laneSwitch("pair_maker"))}
     <span class="navctl-br" aria-hidden="true"></span>
     ${group("0.999 回收", "", laneSwitch("certain_win_recycle"))}
     ${group("篮子", "basket", laneSwitch("basket")
@@ -19990,7 +20203,7 @@ const LC_LANES = {
     on:"实盘举旗时，事件日当地 12 点起一小时内读一次 D0、P1、市场，三家指向同一档就吃单买该档 YES，每站日一腿（宪章 280 补记一）",
     off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
   pair_maker: {name:"配对挂单线",
-    on:"实盘举旗时，盘口成形即在市场众数桶挂 YES/NO 两条 post-only 阶梯（任一 YES＋任一 NO ≤0.95），6 小时窗、允许众数单边持有到结算（宪章 269）",
+    on:"实盘举旗时，盘口成形（中价合计 0.7–1.4、众数桶双边）即在市场众数桶先挂 YES 买一+1 积累、NO 按 ≤0.95−YES 均价补配对，15 分钟一档重挂、12 小时窗、距结算 >36h，允许单边持有到结算（宪章 269 补记六）",
     off:"整条车道跳过：不挂新单；已挂单到窗口自然过期，持仓照常持有到结算"},
   copy_follow: {name:"跟单线",
     on:"实盘举旗时，跟随对标账户的天气成交，按 我方净值÷对方持仓市值 等比例缩小；买不高于对方价、卖不低于对方价（宪章 256）",
@@ -20047,7 +20260,7 @@ function liveReadiness(){
   const LT = L.lane_pnl_totals || {};
   const LANE_ORDER = [["proper_bet","Proper"],["tail_short","远尾做空"],
     ["fade_p0m","反向A"],["fade_p0","反向B"],["consensus_noon","共识线"],
-    ["tiebreak","秤砣线"],["basket","篮子"],["copy_follow","跟单线"]];
+    ["tiebreak","秤砣线"],["basket","篮子"],["copy_follow","跟单线"],["pair_maker","配对挂单"]];
   // 同心线 and P1 尾段 have no column (user 2026-10-05: 去掉同心线; 2026-10-09:
   // 去掉p1尾端线数据看板); 合计 still sums every lane.
   const LANES_SHOWN = LANE_ORDER.filter(([lane])=>LT[lane]);

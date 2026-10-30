@@ -387,3 +387,72 @@ def test_a_partial_lead_fill_under_the_minimum_is_still_followed():
     assert no["price"] == 0.40 and no["shares"] == 4.35
     assert P._shares(no["price"], {**CFG, "rung_shares": no["shares"]}, 5.0) == 5.0
     assert status["lead"].startswith("YES:unmatched_cap")
+
+
+# ---------------------------------------------------------------------------
+# The board (user 2026-10-30 「前端加开关和数据统计」).
+
+
+def _board_conn():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(P.PLAN_DDL)
+    conn.execute(P.MERGE_DDL)
+    conn.execute("CREATE TABLE basket_target_order_intents (order_intent_id TEXT, token_id TEXT,"
+                 " order_action TEXT, state TEXT, live_submit_authorized INTEGER)")
+    conn.execute("CREATE TABLE basket_target_order_reconciliations (order_intent_id TEXT,"
+                 " filled_size REAL, filled_notional_usdc REAL)")
+
+    def plan(day, bucket, state, yes, no):
+        tokens = {"YES": f"y{day}", "NO": f"n{day}"}
+        book = {"YES": {"shares": yes[0], "cost_usdc": yes[1], "resting": False},
+                "NO": {"shares": no[0], "cost_usdc": no[1], "resting": state == "active"}}
+        matched = min(yes[0], no[0])
+        book.update(matched_shares=matched, unmatched_shares=abs(yes[0] - no[0]),
+                    unmatched_side="YES" if yes[0] > no[0] else "NO" if no[0] > yes[0] else None,
+                    pair_cost=(yes[1] / yes[0] + no[1] / no[0]) if yes[0] and no[0] else None)
+        conn.execute(f"INSERT INTO {P.PLAN_TABLE} VALUES (?,?,?,?,?,?,?,?,?)",
+                     ("LEMD", day, bucket, state, f"{day}T00:00:00Z", f"{day}T12:00:00Z",
+                      json.dumps({"plan_id": f"p{day}", "tokens": tokens, "formation": {"mid_sum": 0.98},
+                                  "rungs": []}), json.dumps(book), f"{day}T01:00:00Z"))
+        for side, (shares, cost) in (("YES", yes), ("NO", no)):
+            if shares:
+                iid = f"{side}{day}"
+                conn.execute("INSERT INTO basket_target_order_intents VALUES (?,?,?,?,1)",
+                             (iid, tokens[side], "BUY", "resolved"))
+                conn.execute("INSERT INTO basket_target_order_reconciliations VALUES (?,?,?)", (iid, shares, cost))
+
+    plan("2026-10-15", "27°C", "done", (5.0, 2.55), (5.0, 2.20))   # a pair at 0.95, landed 26°C
+    plan("2026-10-16", "27°C", "done", (5.0, 2.15), (0.0, 0.0))    # YES alone, landed 27°C
+    plan("2026-10-31", "21°C", "active", (5.0, 2.25), (0.0, 0.0))  # still quoting
+    return conn
+
+
+def test_the_board_counts_pairs_and_settles_each_plan(monkeypatch):
+    import scripts.calibration_dashboard as board
+
+    monkeypatch.setattr(board, "_load_strategy_lanes",
+                        lambda: {"lanes": {"pair_maker": {**CFG, "enabled": True}}})
+    monkeypatch.setattr(board, "_live_settled_buckets", lambda conn, keys: {
+        k: v for k, v in {("LEMD", "2026-10-15"): ("26°C", "label"),
+                          ("LEMD", "2026-10-16"): ("27°C", "label")}.items() if k in keys})
+    out = board.collect_pair_maker_lane(_board_conn())
+    assert out["settings"]["enabled"] is True and out["settings"]["pair_cost_cap"] == 0.95
+    T = out["plans"]
+    assert (T["total"], T["active"], T["filled"], T["paired"]) == (3, 1, 3, 1)
+    assert T["matched_shares"] == 5.0 and T["avg_pair_cost"] == pytest.approx(0.95)
+    assert T["locked_usdc"] == pytest.approx(0.25)
+    rows = {r["event_date"]: r for r in T["rows"]}
+    # The pair pays 1 a pair whichever bucket lands; the lone YES rides the outcome.
+    assert rows["2026-10-15"]["pnl_usdc"] == pytest.approx(5.0 - 4.75)
+    assert rows["2026-10-16"]["pnl_usdc"] == pytest.approx(5.0 - 2.15)
+    assert rows["2026-10-31"]["pnl_usdc"] is None and rows["2026-10-31"]["settled_bucket"] is None
+    assert T["closed"] == 2 and T["pnl_usdc"] == pytest.approx(0.25 + 2.85)
+    assert T["open_cost_usdc"] == pytest.approx(2.25) and T["unmatched_shares"] == 10.0
+
+
+def test_the_board_draws_the_switch_and_the_page():
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    strip = source[source.index("function liveControlStrip(){"):source.index("const LC_LANES = {")]
+    assert 'laneSwitch("pair_maker")' in strip
+    assert '"pair_maker_lane": pair_maker_lane,' in source
+    assert 'pairMakerLane(), "配对挂单线")' in source and "function pairMakerLane(){" in source
