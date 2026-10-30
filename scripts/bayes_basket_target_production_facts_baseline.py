@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.database import PROTECTED_RESIDENT_WS_MANIFEST  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     assert_target_db_capacity,
     load_bounded_json,
@@ -42,7 +43,7 @@ TARGET_ACTIVATION = Path("config/trading/bayes_basket_target_production_no_live_
 PROTECTED_FILES = (
     Path("config/trading/basket_yes_v1.json"),
     Path("data/weather_basket_yes_status.json"),
-    Path("data/market_ws_latest_quotes.json"),
+    PROTECTED_RESIDENT_WS_MANIFEST,
     Path("config/trading/settlement_floor_basket_policy_v1.json"),
 )
 # These files are live runtime snapshots owned by protected processes.  Their
@@ -51,7 +52,7 @@ PROTECTED_FILES = (
 # ``_boundary_snapshot``; raw file hashes remain in the receipt for the
 # within-audit protection check.
 VOLATILE_PROTECTED_FILES = frozenset({
-    Path("data/market_ws_latest_quotes.json"),
+    PROTECTED_RESIDENT_WS_MANIFEST,
     Path("data/weather_basket_yes_status.json"),
 })
 RUNTIME_CLOSURE_FILES = (

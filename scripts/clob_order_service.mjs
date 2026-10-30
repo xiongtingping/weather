@@ -1,5 +1,6 @@
 import http from "http";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
@@ -15,14 +16,17 @@ import { hashTypedData } from "viem";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = process.env.PM_DATA_DIR || path.join(ROOT, "data");
+// The market-data listener's outputs live on the internal SSD
+// (bayes_basket_target/database.py MARKET_WS_HOT_DIR), not under DATA_DIR.
+const MARKET_WS_HOT_DIR = path.join(os.homedir(), "weather_hot", "market_ws");
 const DB_PATH = process.env.PM_ARCHIVE_DB || path.join(DATA_DIR, "archive.db");
 const LIVE_PAUSE_FILE = process.env.PM_LIVE_PAUSE_FILE || path.join(DATA_DIR, "live_paused.flag");
 const HELD_YES_INVENTORY_FILE = process.env.PM_HELD_YES_INVENTORY_FILE
   || path.join(DATA_DIR, "reported_trajectory_held_yes_tokens.json");
 const HELD_YES_WS_MANIFEST_FILE = process.env.PM_HELD_YES_WS_MANIFEST_PATH
-  || path.join(DATA_DIR, "market_ws_held_yes_quotes.json");
+  || path.join(MARKET_WS_HOT_DIR, "market_ws_held_yes_quotes.json");
 const HELD_YES_WS_SHARD_DIR = process.env.PM_HELD_YES_WS_SHARD_DIR
-  || path.join(DATA_DIR, "market_ws_held_yes_quote_shards");
+  || path.join(MARKET_WS_HOT_DIR, "market_ws_held_yes_quote_shards");
 const HELD_YES_WS_MANIFEST_SCHEMA = "clob_ws_held_yes_quote_manifest_v1";
 const HELD_YES_WS_TOKEN_SCHEMA = "clob_ws_held_yes_token_quote_snapshot_v1";
 const SERVICE_NAME = "clob_order_service";
@@ -1836,7 +1840,7 @@ export class ClobOrderService {
 
   readLatestWsQuoteSnapshot(maxAgeMs, tokenID = "", allowPartialTopology = false, tokenIDs = []) {
     const snapshotPath = env(
-      "PM_MARKET_WS_LATEST_QUOTES_PATH", path.join(DATA_DIR, "market_ws_latest_quotes.json"),
+      "PM_MARKET_WS_LATEST_QUOTES_PATH", path.join(MARKET_WS_HOT_DIR, "market_ws_latest_quotes.json"),
     );
     const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
     const suppliedHash = String(parsed?.snapshot_sha256 || "");
@@ -1871,7 +1875,7 @@ export class ClobOrderService {
     }
     if (requestedTokenIDs.length && parsed?.quote_storage === "sha256_token_shards_v1") {
       const shardDir = env(
-        "PM_MARKET_WS_QUOTE_SHARD_DIR", path.join(DATA_DIR, "market_ws_quote_shards"),
+        "PM_MARKET_WS_QUOTE_SHARD_DIR", path.join(MARKET_WS_HOT_DIR, "market_ws_quote_shards"),
       );
       for (const requested of requestedTokenIDs) {
         const filename = `${crypto.createHash("sha256").update(requested).digest("hex")}.json`;

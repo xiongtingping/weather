@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.database import MARKET_WS_HOT_DIR
 from bayes_basket_target.held_yes_registry import (
     classify_held_yes_tokens,
     quote_required_token_ids,
@@ -88,24 +89,24 @@ WS_URL = os.environ.get(
 )
 WS_PROXY_MODE = str(os.environ.get("PM_MARKET_WS_PROXY", "none") or "none").strip()
 HEARTBEAT_PATH = Path(
-    os.environ.get("PM_MARKET_WS_HEARTBEAT_PATH", str(ROOT / "data" / "market_ws_heartbeat.json"))
+    os.environ.get("PM_MARKET_WS_HEARTBEAT_PATH", str(MARKET_WS_HOT_DIR / "market_ws_heartbeat.json"))
 )
 LATEST_QUOTES_PATH = Path(
-    os.environ.get("PM_MARKET_WS_LATEST_QUOTES_PATH", str(ROOT / "data" / "market_ws_latest_quotes.json"))
+    os.environ.get("PM_MARKET_WS_LATEST_QUOTES_PATH", str(MARKET_WS_HOT_DIR / "market_ws_latest_quotes.json"))
 )
 QUOTE_SHARD_DIR = Path(
-    os.environ.get("PM_MARKET_WS_QUOTE_SHARD_DIR", str(ROOT / "data" / "market_ws_quote_shards"))
+    os.environ.get("PM_MARKET_WS_QUOTE_SHARD_DIR", str(MARKET_WS_HOT_DIR / "market_ws_quote_shards"))
 )
 HELD_YES_WS_MANIFEST_PATH = Path(
     os.environ.get(
         "PM_HELD_YES_WS_MANIFEST_PATH",
-        str(ROOT / "data" / "market_ws_held_yes_quotes.json"),
+        str(MARKET_WS_HOT_DIR / "market_ws_held_yes_quotes.json"),
     )
 )
 HELD_YES_WS_SHARD_DIR = Path(
     os.environ.get(
         "PM_HELD_YES_WS_SHARD_DIR",
-        str(ROOT / "data" / "market_ws_held_yes_quote_shards"),
+        str(MARKET_WS_HOT_DIR / "market_ws_held_yes_quote_shards"),
     )
 )
 TARGET_ACTIVATION_PATH = (

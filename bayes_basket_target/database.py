@@ -17,10 +17,20 @@ DEFAULT_TARGET_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 #: 然后阶段性的搬迁至外置盘」): the repository is on the external spinning disk,
 #: the store stays on the internal SSD, and ``DEFAULT_TARGET_DB`` is a symlink
 #: to exactly this file.  It is the one symlink the boundary accepts.
-HOT_TARGET_DB = Path.home() / "weather_hot" / "bayes_basket_target_ssot.db"
+HOT_ROOT = Path.home() / "weather_hot"
+HOT_TARGET_DB = HOT_ROOT / "bayes_basket_target_ssot.db"
+#: The market-data listener's own outputs: the book manifest (7 MB, rewritten
+#: every 2 s), its heartbeat, the per-token quote shards (1,232 renames a
+#: dump).  On the external spinning disk every one of those writes ran on the
+#: listener's event loop; while WRF wrote its 30 MB restart files to the same
+#: disk the loop sat in rename/write for minutes, the publisher wrote nothing,
+#: and its watchdog restarted it 26 times in 15 hours (2026-10-29T09Z..
+#: 10-30T00Z, 185-1207 s each) -- every lane and the operator's basket were
+#: refused a stale book in between.  Plain files here, not symlinks.
+MARKET_WS_HOT_DIR = HOT_ROOT / "market_ws"
 DEFAULT_TARGET_PAUSE_MARKER = ROOT / "data" / "bayes_basket_target_migration_paused.flag"
-PROTECTED_RESIDENT_WS_MANIFEST = (ROOT / "data" / "market_ws_latest_quotes.json").resolve()
-DEFAULT_TARGET_WS_MANIFEST = ROOT / "data" / "bayes_basket_target_official_ws_manifest.json"
+PROTECTED_RESIDENT_WS_MANIFEST = (MARKET_WS_HOT_DIR / "market_ws_latest_quotes.json").resolve()
+DEFAULT_TARGET_WS_MANIFEST = MARKET_WS_HOT_DIR / "bayes_basket_target_official_ws_manifest.json"
 
 TARGET_ACTIVATION_DDL = """
 CREATE TABLE IF NOT EXISTS basket_strategy_activation_state (
@@ -72,7 +82,9 @@ __all__ = [
     "DEFAULT_TARGET_DB",
     "DEFAULT_TARGET_PAUSE_MARKER",
     "DEFAULT_TARGET_WS_MANIFEST",
+    "HOT_ROOT",
     "HOT_TARGET_DB",
+    "MARKET_WS_HOT_DIR",
     "PROTECTED_RESIDENT_WS_MANIFEST",
     "ROOT",
     "SHARED_LIVE_DB",

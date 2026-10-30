@@ -40,6 +40,7 @@ from bayes_basket_target.atomic_cutover_receipt import (  # noqa: E402
     seal_stage,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.database import DEFAULT_TARGET_WS_MANIFEST  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
 from bayes_basket_target.native_ensemble_authority import (  # noqa: E402
     DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST,
@@ -75,7 +76,7 @@ DEFAULT_ACTIVATION = (
     / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
 )
 DEFAULT_MARKET_MANIFEST = (
-    ROOT / "data/bayes_basket_target_official_ws_manifest.json"
+    DEFAULT_TARGET_WS_MANIFEST
 )
 DEFAULT_NATIVE_OOS_SNAPSHOT = DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST
 DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST = DEFAULT_NATIVE_OOS_SNAPSHOT

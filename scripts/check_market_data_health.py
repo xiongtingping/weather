@@ -14,6 +14,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target.database import MARKET_WS_HOT_DIR
+
 DB = ROOT / "data" / "archive.db"
 # The archive above is the tick lane.  It is not the lane the basket trades on,
 # and watching only it is how the target quote lane stopped for twenty-eight
@@ -21,7 +24,7 @@ DB = ROOT / "data" / "archive.db"
 # SSOT had hit its own byte ceiling and every quote write was failing closed,
 # which nothing here could see because nothing here opened that database.
 TARGET_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
-HEARTBEAT = ROOT / "data" / "market_ws_heartbeat.json"
+HEARTBEAT = MARKET_WS_HOT_DIR / "market_ws_heartbeat.json"
 
 
 def _env_int(name: str, default: int) -> int:

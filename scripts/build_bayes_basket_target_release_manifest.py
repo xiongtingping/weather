@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import content_sha256
-from bayes_basket_target.database import DEFAULT_TARGET_DB
+from bayes_basket_target.database import DEFAULT_TARGET_DB, DEFAULT_TARGET_WS_MANIFEST
 from bayes_basket_target import FORWARD_SCORECARD_SCHEMA
 from scripts.bayes_basket_target_production_readiness import ROOT, audit
 
@@ -240,7 +240,7 @@ def build_manifest(
         or root / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
     ).expanduser().resolve()
     ws_manifest_path = (
-        manifest or root / "data/bayes_basket_target_official_ws_manifest.json"
+        manifest or DEFAULT_TARGET_WS_MANIFEST
     ).expanduser().resolve()
     generated = generated_at_utc.strip() or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     readiness = audit(

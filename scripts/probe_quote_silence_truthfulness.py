@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.database import DEFAULT_TARGET_WS_MANIFEST  # noqa: E402
 
 
 SCHEMA = "quote_silence_truthfulness_probe_v1"
@@ -193,7 +194,7 @@ def main() -> int:
     parser.add_argument(
         "--manifest",
         type=Path,
-        default=ROOT / "data" / "bayes_basket_target_official_ws_manifest.json",
+        default=DEFAULT_TARGET_WS_MANIFEST,
     )
     parser.add_argument("--duration-sec", type=float, default=1800.0)
     parser.add_argument("--poll-sec", type=float, default=3.0)

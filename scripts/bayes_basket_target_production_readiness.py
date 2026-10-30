@@ -36,6 +36,7 @@ from bayes_basket_target import (  # noqa: E402
 )
 from bayes_basket_target.database import (  # noqa: E402
     DEFAULT_TARGET_DB,
+    DEFAULT_TARGET_WS_MANIFEST,
     is_isolated_target_database,
     resolve_target_database,
 )
@@ -73,7 +74,7 @@ DEFAULT_TARGET_RAW_ROOT = ROOT / "data/research/bayes_basket_target/model_arriva
 DEFAULT_CALIBRATION_MAX_STALE_DAYS = 5
 # The target lane must never use the resident WS manifest as an input.
 # Keep the target evidence path separate from unrelated resident evidence.
-TARGET_WS_MANIFEST = ROOT / "data/bayes_basket_target_official_ws_manifest.json"
+TARGET_WS_MANIFEST = DEFAULT_TARGET_WS_MANIFEST
 RESIDENT_WS_MANIFEST = ROOT / "data/market_ws_latest_quotes.json"
 MULTI_SCOPE_WS_MANIFEST_SCHEMA = (
     "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
