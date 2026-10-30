@@ -63,7 +63,13 @@ def _position(row: Mapping[str, Any], side: str, lookup: Callable) -> tuple[str,
         raise M.ManualOrderError("本桶没有登记对应 token")
     answer = lookup(token)
     if answer.get("ok") is not True:
-        raise M.ManualOrderError("交易所持仓未知，不能卖出（不采用公开接口滞后份额）")
+        # The client folds the gateway being down, still starting, a timeout
+        # and the exchange's own refusal into one ok:false; name which.
+        why = str(answer.get("error") or "")
+        if answer.get("http_status"):
+            why = f"{why} HTTP {answer['http_status']}".strip()
+        raise M.ManualOrderError(
+            f"交易所持仓未知（{why or '无原因'}），不能卖出（不采用公开接口滞后份额）")
     held = _number(answer.get("shares"), "持仓")
     if held < 0:
         raise M.ManualOrderError("持仓无效")
