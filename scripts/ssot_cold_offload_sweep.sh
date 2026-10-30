@@ -1,5 +1,9 @@
 #!/bin/bash
-# Charter 272: the SSOT cold offload on its own clock, every three hours.
+# Charter 272: the SSOT cold offload on its own clock -- once a day at 18:00
+# local since 2026-10-29 (user 「每 3 小时改为每天一次」「18:00」), with a
+# 3,600 s budget; it was every three hours at 2,400 s, and the file-retention
+# job's own pass at 05:20/17:20 is gone.  The history below is why it got a
+# clock of its own.
 #
 # It ran only inside the twice-daily NWP raw retention job, one 3,600 s
 # budget each, and could not keep up: each batch costs ~10 s whatever its
@@ -32,7 +36,7 @@ fi
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SSOT cold offload"
 nice -n 10 "$PY" scripts/ssot_cold_offload.py --apply \
   --cold-tier-root "$COLD_TIER_ROOT" \
-  --budget-seconds "${PM_SSOT_COLD_OFFLOAD_SWEEP_BUDGET_SEC:-2400}" \
+  --budget-seconds "${PM_SSOT_COLD_OFFLOAD_SWEEP_BUDGET_SEC:-3600}" \
   --receipt "$PROJECT_DIR/output/audits/ssot_cold_offload_latest.json" \
   || echo "  stopped early (moved batches are verified; the rest stay in the SSOT)"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done"
