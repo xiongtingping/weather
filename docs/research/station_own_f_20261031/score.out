@@ -1,0 +1,65 @@
+walk 2423 station-days, 55 days 2026-09-01..2026-10-30
+variant                         MAE    bias    hit  ΔMAE vs chain [95%] halves
+chain                         0.979  +0.043  35.0%
+own_median_hl25_equal         1.020  +0.025  34.7%  +0.041 [+0.025, +0.057] +0.046/+0.037
+own_median_hl25_invmae        1.001  +0.046  34.7%  +0.023 [+0.014, +0.030] +0.018/+0.027
+own_median_hl15_invmae        1.000  +0.042  35.2%  +0.022 [+0.013, +0.030] +0.016/+0.027
+own_median_hl45_invmae        1.002  +0.050  34.9%  +0.023 [+0.015, +0.031] +0.018/+0.028
+own_mean_hl25_invmae          0.997  +0.056  34.7%  +0.018 [+0.009, +0.027] +0.013/+0.023
+own_ls_hl25_r1                1.009  +0.011  35.1%  +0.031 [+0.015, +0.049] +0.053/+0.007
+own_ls_hl45_r1                1.010  +0.009  35.0%  +0.031 [+0.015, +0.049] +0.053/+0.007
+own_ls_hl45_r5                0.993  +0.019  35.1%  +0.014 [+0.005, +0.025] +0.026/+0.003
+tuned                         0.982  +0.020  35.4%  +0.003 [-0.007, +0.013] -0.002/+0.009
+tuned picks: {'chain': 1113, 'own_median_hl25_equal': 320, 'own_mean_hl25_invmae': 231, 'own_ls_hl45_r5': 231, 'own_ls_hl25_r1': 176, 'own_ls_hl45_r1': 174, 'own_median_hl45_invmae': 77, 'own_median_hl15_invmae': 63, 'own_median_hl25_invmae': 38}
+
+per station MAE (chain → tuned, best fixed variant):
+  CYYZ n= 51 chain 1.051 tuned 1.043  best own_mean_hl25_invmae 1.054
+  EDDM n= 52 chain 0.990 tuned 1.062  best own_median_hl15_invmae 1.015
+  EFHK n= 52 chain 0.668 tuned 0.681  best own_median_hl45_invmae 0.676
+  EGLC n= 52 chain 0.751 tuned 0.760  best own_mean_hl25_invmae 0.743
+  EHAM n= 52 chain 0.597 tuned 0.623  best own_median_hl15_invmae 0.601
+  EPWA n= 52 chain 0.952 tuned 0.996  best own_mean_hl25_invmae 0.952
+  FACT n= 52 chain 1.353 tuned 1.313  best own_ls_hl45_r5 1.273
+  KATL n= 51 chain 0.727 tuned 0.741  best own_median_hl25_invmae 0.765
+  KAUS n= 42 chain 1.096 tuned 1.149  best own_mean_hl25_invmae 1.108
+  KBKF n= 36 chain 0.842 tuned 0.820  best own_median_hl45_invmae 0.897
+  KDAL n= 42 chain 1.361 tuned 1.475  best own_median_hl25_equal 1.234
+  KDEN n=  6 chain 0.993 tuned 0.993  best own_median_hl25_equal 0.993
+  KHOU n= 42 chain 1.018 tuned 1.040  best own_median_hl45_invmae 1.022
+  KLAX n= 42 chain 1.522 tuned 1.525  best own_median_hl25_equal 1.514
+  KLGA n= 51 chain 0.958 tuned 0.915  best own_ls_hl45_r5 0.884
+  KMIA n= 51 chain 0.629 tuned 0.618  best own_ls_hl25_r1 0.600
+  KORD n= 42 chain 1.271 tuned 1.225  best own_median_hl25_equal 1.183
+  KSEA n= 42 chain 1.431 tuned 1.385  best own_ls_hl25_r1 1.354
+  KSFO n= 42 chain 1.713 tuned 1.721  best own_median_hl45_invmae 1.787
+  LEMD n= 52 chain 0.849 tuned 0.852  best own_median_hl25_invmae 0.832
+  LFPB n= 52 chain 0.971 tuned 1.012  best own_mean_hl25_invmae 0.954
+  LIMC n= 52 chain 0.686 tuned 0.691  best own_median_hl45_invmae 0.699
+  LLBG n= 51 chain 0.815 tuned 0.829  best own_mean_hl25_invmae 0.758
+  LTAC n= 52 chain 0.823 tuned 0.877  best own_ls_hl45_r5 0.849
+  LTFM n= 51 chain 0.867 tuned 0.867  best own_ls_hl45_r5 0.902
+  MMMX n= 42 chain 0.827 tuned 0.806  best own_ls_hl45_r1 0.789
+  MPMG n= 42 chain 0.819 tuned 0.819  best own_median_hl25_equal 0.794
+  NZWN n= 55 chain 0.727 tuned 0.728  best own_median_hl25_equal 0.722
+  OEJN n= 52 chain 0.759 tuned 0.714  best own_mean_hl25_invmae 0.641
+  OPKC n= 52 chain 1.002 tuned 1.030  best own_median_hl15_invmae 0.975
+  RCSS n= 54 chain 0.936 tuned 0.937  best own_mean_hl25_invmae 0.931
+  RJTT n= 55 chain 0.989 tuned 0.984  best own_median_hl45_invmae 0.988
+  RKPK n= 55 chain 0.814 tuned 0.799  best own_ls_hl45_r5 0.780
+  RKSI n= 55 chain 0.782 tuned 0.813  best own_ls_hl25_r1 0.758
+  RPLL n= 54 chain 0.943 tuned 0.926  best own_median_hl25_equal 0.891
+  SAEZ n= 51 chain 1.238 tuned 1.172  best own_ls_hl45_r1 1.158
+  SBGR n= 51 chain 1.401 tuned 1.470  best own_mean_hl25_invmae 1.433
+  UUWW n= 51 chain 1.071 tuned 1.065  best own_ls_hl45_r5 1.065
+  VILK n= 52 chain 0.809 tuned 0.807  best own_mean_hl25_invmae 0.834
+  WMKK n= 54 chain 0.829 tuned 0.806  best own_median_hl25_equal 0.778
+  WSSS n= 54 chain 0.767 tuned 0.856  best own_mean_hl25_invmae 0.780
+  ZBAA n= 54 chain 1.037 tuned 1.049  best own_ls_hl45_r1 0.935
+  ZGGG n= 54 chain 0.921 tuned 0.953  best own_mean_hl25_invmae 0.929
+  ZGSZ n= 54 chain 1.161 tuned 1.079  best own_ls_hl45_r1 0.967
+  ZHHH n= 54 chain 1.559 tuned 1.471  best own_ls_hl45_r5 1.419
+  ZSPD n= 54 chain 0.774 tuned 0.765  best own_median_hl25_equal 0.731
+  ZSQD n= 54 chain 0.791 tuned 0.778  best own_ls_hl45_r5 0.767
+  ZUCK n= 54 chain 1.063 tuned 1.063  best own_median_hl15_invmae 1.101
+  ZUUU n= 54 chain 1.432 tuned 1.451  best own_mean_hl25_invmae 1.455
+tuned better than chain at 21/49 stations
