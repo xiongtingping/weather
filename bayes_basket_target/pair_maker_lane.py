@@ -3,9 +3,10 @@
 User rulings 2026-10-12/13: a YES+NO pair lane, post-only only, pair cost under
 1 and held at 0.95; then 「成形即挂、众数桶、允许 NO 单边、0.95 作挂价上限」.
 
-* When: the first pass at which the station-day's book is FORMED -- every bucket
-  quoted on both sides (best bid, and a best ask of at least ``ask_min_shares``)
-  and the mids summing to 0.7-1.4.  Before that the ladder carries no market
+* When: the first pass at which the station-day's book is FORMED -- the mids
+  summing to 0.7-1.4 (a missing side counts zero) and the mode quoted on both
+  sides (best bid, and a best ask of at least ``ask_min_shares``; amendment
+  five, user 10-30; v1 wanted every bucket two-sided).  Before that the ladder carries no market
   view (listing books sum to ~3.0; quoting F's or F_v3's bucket at listing lost
   in all 36 backtest cells, research round 60b).
 * Where: the market's mode bucket at formation (the largest mid; the lower
@@ -200,9 +201,16 @@ def _best_bid(row: Mapping[str, Any]) -> float | None:
 def formation(book_rows: list[Mapping[str, Any]], cfg: Mapping[str, Any]) -> dict[str, Any]:
     """Is the ladder formed, and if so its mode bucket and that bucket's quotes.
 
-    Formed = every bucket two-sided (bid, and an ask of ``ask_min_shares``) and
-    the mids summing inside ``formation_mid_sum``.  The mode is the largest
-    mid, the lower ordinal on a tie.
+    Formed (amendment five, user 10-30 「放宽成形门」) = the mids summing inside
+    ``formation_mid_sum`` and the mode two-sided (a bid, and an ask of
+    ``ask_min_shares``).  A missing side counts zero in its bucket's mid (an
+    ask alone is ask/2, a bid alone the bid), so a listing ladder with a few
+    bids still sums far over the range on its ~0.46 asks.  v1 wanted every
+    bucket two-sided: LEMD 10-18..10-31 formed on 118 of 4,090 snapshots past
+    the 36 h line, the far buckets lacking a YES bid while the mids already
+    summed to about 1.04.  The mode is the largest two-sided mid, the lower
+    ordinal on a tie; a one-sided bucket at or above it means the market's
+    mode has no quote, and nothing forms.
     """
 
     low, high = (float(v) for v in cfg["formation_mid_sum"])
@@ -210,15 +218,23 @@ def formation(book_rows: list[Mapping[str, Any]], cfg: Mapping[str, Any]) -> dic
     if len(rows) < 3:
         return {"formed": False, "reason": "ladder_short"}
     mids: list[tuple[float, int, Mapping[str, Any], float, float]] = []
+    one_sided: list[float] = []
     for row in rows:
         bid, ask = _best_bid(row), _best_ask(row, float(cfg["ask_min_shares"]))
-        if bid is None or ask is None:
-            return {"formed": False, "reason": "one_sided_bucket"}
-        mids.append(((bid + ask) / 2.0, int(row.get("ordinal") or 0), row, bid, ask))
-    total = sum(m for m, *_ in mids)
+        if bid is not None and ask is not None:
+            mids.append(((bid + ask) / 2.0, int(row.get("ordinal") or 0), row, bid, ask))
+        elif bid is not None:
+            one_sided.append(bid)
+        elif ask is not None:
+            one_sided.append(ask / 2.0)
+    if not mids:
+        return {"formed": False, "reason": "no_two_sided_bucket"}
+    total = sum(m for m, *_ in mids) + sum(one_sided)
     if not low <= total <= high:
         return {"formed": False, "reason": f"mid_sum_outside:{total:.2f}"}
     mid, _ordinal, row, bid, ask = max(mids, key=lambda t: (t[0], -t[1]))
+    if any(m >= mid for m in one_sided):
+        return {"formed": False, "reason": "mode_one_sided"}
     return {"formed": True, "bucket": str(row.get("bucket")), "mid": mid, "bid": bid, "ask": ask,
             "mid_sum": round(total, 4), "tick": float(row.get("price_tick_size") or 0.001)}
 

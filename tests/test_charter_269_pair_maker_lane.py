@@ -38,18 +38,26 @@ def test_the_lane_is_registered_and_off_by_default():
     assert 'pair_maker: {name:"配对挂单线"' in board
 
 
-def test_formation_needs_every_bucket_two_sided_and_the_mids_in_range():
+def test_formation_needs_the_mode_two_sided_and_the_mids_in_range():
     form = P.formation(_formed_book(), CFG)
     assert form["formed"] and form["bucket"] == "20°C" and form["mid"] == pytest.approx(0.42)
+    # Amendment five (user 10-30 「放宽成形门」): a far bucket without a YES bid
+    # no longer holds the station-day back; its ask counts half.
     one_sided = _formed_book()
     one_sided[0] = _row("18°C", 0, None, 0.06)
-    assert P.formation(one_sided, CFG) == {"formed": False, "reason": "one_sided_bucket"}
-    # The listing ladder: asks summing near 3 -> not formed.
+    form = P.formation(one_sided, CFG)
+    assert form["formed"] and form["bucket"] == "20°C" and form["mid_sum"] == pytest.approx(0.96)
+    # The listing ladder: asks summing near 3 -> not formed, with or without its bids.
     listing = [_row(f"{t}°C", i, 0.16, 0.46) for i, t in enumerate(range(18, 25))]
     assert P.formation(listing, CFG)["formed"] is False
+    bidless = [_row(f"{t}°C", i, 0.16 if i < 2 else None, 0.46) for i, t in enumerate(range(18, 25))]
+    assert P.formation(bidless, CFG)["reason"].startswith("mid_sum_outside")
     thin = _formed_book()
     thin[2] = _row("20°C", 2, 0.40, 0.44, shares=2.0)
-    assert P.formation(thin, CFG)["reason"] == "one_sided_bucket", "an ask under five shares is not a quote"
+    assert P.formation(thin, CFG) == {"formed": False, "reason": "mode_one_sided"}, \
+        "an ask under five shares is not a quote, and the mode needs one"
+    nothing = [_row(f"{t}°C", i, None, 0.30) for i, t in enumerate(range(18, 21))]
+    assert P.formation(nothing, CFG) == {"formed": False, "reason": "no_two_sided_bucket"}
 
 
 def test_a_tie_on_the_mode_takes_the_lower_bucket():
