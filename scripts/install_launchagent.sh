@@ -268,16 +268,24 @@ while IFS=$'\t' read -r label dest; do
   if [ "$BOOTSTRAP" = "1" ]; then
     launchctl enable "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
     launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
-    teardown_deadline=$((SECONDS + 10))
+    # Wait out the job's own ExitTimeOut: launchd SIGKILLs it then, and the
+    # resident takes most of its 120 s to stop.  A 10 s wait gave up on it
+    # (2026-10-30) and -- the failure flag being shared -- skipped the
+    # bootstrap of market_ws and the order gateway, already booted out:
+    # both were down until the install was rerun.  Each label decides alone.
+    exit_timeout="$(/usr/libexec/PlistBuddy -c 'Print :ExitTimeOut' "$dest" 2>/dev/null || echo 20)"
+    teardown_deadline=$((SECONDS + exit_timeout + 10))
+    label_left=1
     while launchctl print "gui/${UID_VALUE}/${label}" >/dev/null 2>&1; do
       if [ "$SECONDS" -ge "$teardown_deadline" ]; then
         echo "[launchagent] previous instance did not leave launchd: ${label}" >&2
         bootstrap_failed=1
+        label_left=0
         break
       fi
       sleep 0.25
     done
-    if [ "$bootstrap_failed" -ne 0 ]; then
+    if [ "$label_left" -ne 1 ]; then
       continue
     fi
     if ! launchctl bootstrap "gui/${UID_VALUE}" "$dest"; then

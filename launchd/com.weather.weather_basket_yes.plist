@@ -4,6 +4,12 @@
 <dict>
   <key>Label</key>
   <string>com.weather.weather_basket_yes</string>
+  <!-- Interactive: launchd's default (Standard) runs the job and every sweep it
+       spawns at utility QoS, which on this M1 (4P+4E) is held to the efficiency
+       cores once the box is busy; station x model weights took 789 s there
+       against 83 s at default QoS (2026-10-30), past its 900 s sweep budget. -->
+  <key>ProcessType</key>
+  <string>Interactive</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
