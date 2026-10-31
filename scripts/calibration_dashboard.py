@@ -19004,7 +19004,7 @@ const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WR
 const WRF_LEAD = ["nowcast_sat", "fcst", "baseline"];
 function wrfTmaxPanel(){
   const W = D.wrf_tmax || {};
-  const head = `<h2 title="外置盘 WRF 项目（GFS 驱动）：每轮取离站最近格点的 2 m 气温，按站点当地日取最高；对正式真值（宪章 225）。只显示，不进任何层">WRF 最高温预报</h2>`;
+  const head = `<h2 title="外置盘 WRF 项目：3 日预报自 10-30 起为 IFS 与 GDPS 两个驱动各跑一个 WRF、取两者日最高温的平均（之前 GFS 驱动），当天临近预报仍为 GFS 驱动；每轮取离站最近格点的 2 m 气温，按站点当地日取最高；对正式真值（宪章 225）。只显示，不进任何层">WRF 最高温预报</h2>`;
   if(!W.available) return head + `<div class="muted">WRF 读数还没有：${h(W.error || "")}</div>`;
   if(W.state === "volume_missing") return head + `<div class="muted">外置盘未挂载：${h(W.root || "")}</div>`;
   const n = (v, d = 1) => v == null || !isFinite(v) ? "—" : (+v).toFixed(d);
@@ -19026,15 +19026,17 @@ function wrfTmaxPanel(){
     const big = (label, value, cls, sub, tip) => `<div class="card" title="${h(tip || "")}"><div class="muted">${label}</div>
       <div class="mono ${cls || ""}" style="font-size:30px;font-weight:700;line-height:1.2">${value}</div><div class="muted mono">${sub || ""}</div></div>`;
     const top = `<div class="grid g4">
-      ${big(`${h(station)} · ${h(last)} WRF 最高温`, `${n(base.tmax_c)}°C`, "", `${initWord} · ${WRF_STATUS[base.status] || h(base.status || "")}${base.status === "complete" ? "" : ` · 输出到 ${h(base.last_local || "")}`}${base.peak_covered ? "" : " · 峰段未完"}`, `最高出现在当地 ${h(base.at_local || "")}；GFS 驱动，${h(base.domain || "")}；峰段＝当地 10–18 点`)}
+      ${big(`${h(station)} · ${h(last)} WRF 最高温`, `${n(base.tmax_c)}°C`, "", `${initWord} · ${WRF_STATUS[base.status] || h(base.status || "")}${base.status === "complete" ? "" : ` · 输出到 ${h(base.last_local || "")}`}${base.peak_covered ? "" : " · 峰段未完"}`, `最高出现在当地 ${h(base.at_local || "")}；${base.members ? `IFS 与 GDPS 两个驱动的平均（IFS ${n(base.members.ifs)} · GDPS ${n(base.members.gdps)}）` : "GFS 驱动"}，${h(base.domain || "")}；峰段＝当地 10–18 点`)}
       ${big("实测最高温", L.truth_c == null ? "今天还没结束" : `${n(L.truth_c, 0)}°C`, "", "机场报文，结算口径")}
       ${big("WRF 误差", L.truth_c == null ? "—" : `${sg(base.tmax_c - L.truth_c)}°C`, errCls(L.truth_c == null ? null : base.tmax_c - L.truth_c), "WRF 减实测")}
       ${big("GFS 原始预报", `${n((L.gfs || {}).tmax_c)}°C`, "", "3 小时一个点", "WRF 的输入：美国 GFS 自己预报的 2 m 气温")}</div>`;
-    // The three-day forecast, one card per day from today (run/forecast3d.sh: the day's
-    // GFS 00Z to three days ahead 12Z, frozen nowcast physics without satellite).
+    // The three-day forecast, one card per day from today (run/forecast3d.sh, frozen nowcast
+    // physics without satellite): since 10-30 one WRF per driver, IFS HRES and ECCC GDPS, each
+    // nudged to its driver above the PBL, the day's number the mean of their daily maxima (user
+    // 2026-10-31 「驱动方案：上 IFS+GDPS 平均」); each member's maximum is shown under it.
     const ahead = days.filter(d => d >= today && (S.days[d].configs || {}).fcst);
     const wk = d => "日一二三四五六"[new Date(`${d}T12:00:00Z`).getUTCDay()];
-    const aheadRow = !ahead.length ? "" : `<div class="trend-t" style="margin-top:8px" title="WRF 在每个 GFS 时次（00/06/12/18Z）出齐后重跑一次，跑到三天后的当地 20 点；物理与冻结的临近预报相同、不用卫星；箭头＝比上一轮">WRF 未来几天最高温 · 每 6 小时更新</div>
+    const aheadRow = !ahead.length ? "" : `<div class="trend-t" style="margin-top:8px" title="每个时次（00/06/12/18Z）起报后约 8 小时，IFS 与 GDPS 各驱动一个 WRF（高空向各自驱动场松弛），跑到三天后；当天数字＝两者日最高温的平均（回放 14 站日：IFS 偏 +0.98、GDPS 偏 −1.04，平均偏 −0.03、平均误差 0.64°C）；物理与冻结的临近预报相同、不用卫星；箭头＝比上一轮">WRF 未来几天最高温 · IFS+GDPS 平均 · 每 6 小时更新</div>
       <div class="grid g4">${ahead.map(d => { const r = S.days[d].configs.fcst, E = S.days[d];
         const lead = d === today ? "今天" : `${Math.round((new Date(`${d}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 864e5)} 天后`;
         // Auto-updating (user 2026-10-22 「WRF应该是自动更新变化的」): a new run after every
@@ -19042,8 +19044,8 @@ function wrfTmaxPanel(){
         const ch = r.change_c == null ? "" : ` <span class="${r.change_c > 0.05 ? "down" : r.change_c < -0.05 ? "up" : "flat"}" style="font-size:15px" title="比上一轮（${h(String(r.prev_init_utc || "").slice(5, 13).replace("T", " "))}Z）">${r.change_c > 0.05 ? "↑" : r.change_c < -0.05 ? "↓" : "→"}${n(Math.abs(r.change_c))}</span>`;
         const runs = (E.fcst_history || []).slice(-4).map(x => `${String(x[0]).slice(11, 13)}Z ${n(x[1])}`).join(" → ");
         return big(`${h(d.slice(5))} 周${wk(d)} · ${lead}`, `${n(r.tmax_c)}°C${ch}`, "",
-          `${String(r.init_utc || "").slice(5, 10)} ${String(r.init_utc || "").slice(11, 13)}Z 起报 · ${WRF_STATUS[r.status] || h(r.status || "")}${r.peak_covered ? ` · ${h(r.at_local)} 最高` : ` · 输出到 ${h(r.last_local || "")}`}${(E.gfs || {}).tmax_c == null ? "" : ` · GFS ${n(E.gfs.tmax_c)}`}${E.truth_c == null ? "" : ` · 实测 ${n(E.truth_c, 0)}`}`,
-          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}${runs ? `\n各轮：${runs}` : ""}\n每个 GFS 时次（00/06/12/18Z）出齐后重跑一次`); }).join("")}</div>`;
+          `${String(r.init_utc || "").slice(5, 10)} ${String(r.init_utc || "").slice(11, 13)}Z 起报 · ${WRF_STATUS[r.status] || h(r.status || "")}${r.peak_covered ? ` · ${h(r.at_local)} 最高` : ` · 输出到 ${h(r.last_local || "")}`}${r.members ? ` · IFS ${n(r.members.ifs)} · GDPS ${n(r.members.gdps)}` : (E.gfs || {}).tmax_c == null ? "" : ` · GFS ${n(E.gfs.tmax_c)}`}${E.truth_c == null ? "" : ` · 实测 ${n(E.truth_c, 0)}`}`,
+          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}${runs ? `\n各轮：${runs}` : ""}${r.members ? "\nIFS 与 GDPS 两个驱动各跑一个 WRF，取两者日最高温的平均" : "\nGFS 驱动"}\n每个时次（00/06/12/18Z）起报后约 8 小时重跑一次`); }).join("")}</div>`;
     // Same-moment comparison (forward test): what each source said when the nowcast came out.
     const NS = S.nowcast_scores || {};
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
@@ -26381,7 +26383,7 @@ const GROUPS = [
   // WRF, its own area (user 2026-10-22 「前端增加"wrf"板块内容」): the WRF
   // project's daily-maximum output against the truth.  Display only.
   {id:"wrf", label:"WRF", short:"WRF", tone:"#39c5cf",
-   note:"外置盘 WRF 项目（GFS 驱动）的最高温预报：每轮离站最近格点 2 m 气温的当地日最高，对正式真值；只显示，不进任何层",
+   note:"外置盘 WRF 项目的最高温预报（3 日预报为 IFS 与 GDPS 两个驱动的平均，当天临近预报为 GFS 驱动）：每轮离站最近格点 2 m 气温的当地日最高，对正式真值；只显示，不进任何层",
    sections:[[wrfTmaxPanel,"WRF 最高温预报"]]},
 ];
 // Every section an area holds, through its containers.
