@@ -26,6 +26,7 @@ Board only -- nothing here feeds a probability or an order.
 from __future__ import annotations
 
 import fcntl
+import itertools
 import json
 import os
 import queue
@@ -96,7 +97,15 @@ _L2_STATE: dict[str, Any] = {"pending": False, "checked": -1e9}
 _CLP: dict[str, dict[str, dict[str, Any]]] = {}   # scan ISO -> station -> reading
 
 _LOCK = threading.Lock()
-_QUEUE: "queue.Queue[Any]" = queue.Queue()
+# One reader, four kinds of task, in this order (2026-10-31, 「更新滞后」): the
+# hourly SWR first -- the MOS needs every hour 06..H, so one hour left waiting
+# froze it at 10:00 while 11..13 h sat queued -- then the cloud scan, the
+# aerosol, and last the 10-minute L2 scan, a 28-50 MB file re-asked every
+# L2_CHECK_SECONDS that at ~200 KB/s kept the plain FIFO busy.  Newest first
+# within a kind.
+_PRIORITY = {"SWR": 0, "CLP": 1, "ARP": 2, "L2": 3}
+_QUEUE: "queue.PriorityQueue[tuple[int, float, int, Any]]" = queue.PriorityQueue()
+_SEQ = itertools.count()
 _PENDING: set[str] = set()
 _MISSES: dict[str, float] = {}
 _LISTINGS: dict[str, tuple[float, list[str]]] = {}
@@ -558,9 +567,13 @@ def _read_arp(hour: datetime) -> None:
         _persist(_load())
 
 
+def _enqueue(kind: str, task: Any, when: datetime | None = None) -> None:
+    _QUEUE.put((_PRIORITY[kind], -when.timestamp() if when else 0.0, next(_SEQ), task))
+
+
 def _work() -> None:
     while True:
-        hour = _QUEUE.get()
+        hour = _QUEUE.get()[-1]
         if hour == _L2_TASK:
             _read_latest_l2()
             continue
@@ -609,7 +622,7 @@ def measured(station: str, hours: list[datetime]) -> dict[str, float | None]:
             if key in _PENDING or now - _MISSES.get(key, -1e9) < MISS_RETRY_SECONDS:
                 continue
             _PENDING.add(key)
-            _QUEUE.put(hour_start(hour))
+            _enqueue("SWR", hour_start(hour), hour_start(hour))
     return out
 
 
@@ -645,7 +658,7 @@ def clouds(station: str, scans: list[datetime]) -> dict[str, dict[str, Any] | No
             if task in _PENDING or now - _MISSES.get(task, -1e9) < MISS_RETRY_SECONDS:
                 continue
             _PENDING.add(task)
-            _QUEUE.put(("CLP", scan.astimezone(timezone.utc)))
+            _enqueue("CLP", ("CLP", scan.astimezone(timezone.utc)), scan)
     return out
 
 
@@ -667,7 +680,7 @@ def aerosol(station: str, hours: list[datetime]) -> dict[str, dict[str, Any] | N
             if task in _PENDING or now - _MISSES.get(task, -1e9) < MISS_RETRY_SECONDS:
                 continue
             _PENDING.add(task)
-            _QUEUE.put(("ARP", hour_start(hour)))
+            _enqueue("ARP", ("ARP", hour_start(hour)), hour)
     return out
 
 
@@ -681,7 +694,7 @@ def latest(station: str) -> dict[str, Any] | None:
         _load()
         if not _L2_STATE["pending"] and time.monotonic() - _L2_STATE["checked"] >= L2_CHECK_SECONDS:
             _L2_STATE["pending"] = True
-            _QUEUE.put(_L2_TASK)
+            _enqueue("L2", _L2_TASK)
         got = _L2_STATE.get("latest") or {}
         values = got.get("values") or {}
         if station.upper() not in values:
