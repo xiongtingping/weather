@@ -181,13 +181,22 @@ def compute(model: Mapping[str, Any], station: str, zone: ZoneInfo, now: datetim
     nf = band["nf"]
     xs = [(xi - band["mu"][i]) / band["sd"][i] for i, xi in enumerate(x[:nf])]
     beta = band["beta"]
-    parts = {names[i]: beta[i] * xs[i] for i in range(nf)}
-    station_effect = beta[nf + model["stations"].index(station)] if station in model["stations"] else 0.0
-    centre = base + sum(parts.values()) + station_effect + beta[-1]
+    # The station's own coefficients when the fit has them (user 2026-10-31 「每个站点一套自己的」,
+    # docs/research/station_own_d0_20261031); else the fleet's slopes and its station effect.
+    own = (band.get("station_fits") or {}).get(station)
+    if own:
+        slopes, intercept, own_scale = own["beta"][:nf], own["beta"][-1], float(own["scale"])
+        station_effect = intercept - beta[-1]
+    else:
+        slopes, own_scale = beta[:nf], 1.0
+        station_effect = beta[nf + model["stations"].index(station)] if station in model["stations"] else 0.0
+        intercept = station_effect + beta[-1]
+    parts = {names[i]: slopes[i] * xs[i] for i in range(nf)}
+    centre = base + sum(parts.values()) + intercept
     spread = [feats["hours_to_peak"], max(0.0, feats["hours_to_peak"]), feats["fc_rise"], feats["high_minus_base"],
               abs(feats["t_minus_fc"])]
     ss = [(v - band["smu"][i]) / band["ssd"][i] for i, v in enumerate(spread)] + [1.0]
-    sigma = max(0.35, min(3.0, math.exp(sum(g * v for g, v in zip(band["gamma"], ss))) * band["scale"]))
+    sigma = max(0.35, min(3.0, math.exp(sum(g * v for g, v in zip(band["gamma"], ss))) * band["scale"] * own_scale))
     vector = {}
     for rung in axis:
         lo = -1e9 if rung["lo_c"] is None else rung["lo_c"]
@@ -208,6 +217,7 @@ def compute(model: Mapping[str, Any], station: str, zone: ZoneInfo, now: datetim
     return {"state": "ok", "band": band_name, "base_c": round(base, 2), "base_systems": n_base,
             "centre_c": round(centre, 2), "sigma_c": round(sigma, 2), "running_high_c": high,
             "mode": mode, "mode_p": vector[mode], "vector": vector, "station_effect_c": round(station_effect, 2),
+            "station_fit": bool(own),
             "latest_report_utc": cur["valid_at_utc"],
             "parts": [{"feature": k, "c": round(v, 2), "value": feats.get(k.replace("_missing", ""))} for k, v in top],
             "inputs": {k: (None if v is None else round(float(v), 3)) for k, v in feats.items() if k != "dew_minus_fc_dew"},

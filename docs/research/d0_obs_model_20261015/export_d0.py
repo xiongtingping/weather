@@ -41,6 +41,8 @@ def main() -> None:
             "hours": [h0, h1], "n": len(rows),
             "mu": m["mu"].tolist(), "sd": m["sd"].tolist(), "nf": m["nf"], "beta": m["beta"].tolist(),
             "gamma": m["gamma"].tolist(), "smu": m["smu"].tolist(), "ssd": m["ssd"].tolist(), "scale": m["scale"],
+            # Each station's own coefficients (fit_d0.fit_stations); the reader prefers them.
+            "station_fits": F.fit_stations(rows, stations, m), "station_lambda": F.STATION_LAMBDA,
             "walk_forward_mae": {"market": get("market", "mae"), "p1": get("p1", "mae"), "d0": get("full", "mae")},
             "walk_forward_dlog_vs_market": get("full", "dlog_mkt"),
         }

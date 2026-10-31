@@ -23553,7 +23553,7 @@ function sdD0(day){
   return sdModelCard({title, tag: "只读 · 研究", fresh: sdD0Fresh(D), color: SD_COL.D0,
     value: `${sdN(D.centre_c, 2)}°C`, valueTip: tip, mode: D.mode, modeP: D.mode_p,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? D.centre_c - bel.mean : null, "D0 中心减当前服务信念的均值"], ["比市场", mk == null ? null : D.centre_c - mk, "D0 中心减市场均值"]],
-    sub: `σ ${sdN(D.sigma_c, 2)} · 基线 ${sdN(D.base_c, 1)}°C · ${sdEsc(D.band)} 时段${Math.abs(D.station_effect_c || 0) >= 0.05 ? ` · 本站修正 ${sdSg(D.station_effect_c, 2)}` : ""}`,
+    sub: `σ ${sdN(D.sigma_c, 2)} · 基线 ${sdN(D.base_c, 1)}°C · ${sdEsc(D.band)} 时段 · ${D.station_fit ? "本站系数" : "全队系数"}${Math.abs(D.station_effect_c || 0) >= 0.05 ? ` · 本站修正 ${sdSg(D.station_effect_c, 2)}` : ""}`,
     body: parts ? `<div class="sd-d0-parts">${parts}</div>` : "", trend: sdD0Trend(D, day.event_date),
     foot: `前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C`});
 }
@@ -23623,8 +23623,10 @@ function sdMemberBayes(day){
 // Every estimate's truth hit rate (user 2026-10-22 「统计以上各个方式的真值命中率，前端显式出来！」):
 // estimate_hit_readings scores each method as of the same local times on the event day
 // (its mode, or the bucket of its point estimate, against the settled truth's bucket on
-// the market's own ladder).  One card per method: all stations at 13:00 in big, 10:00 and
-// 16:00, this station and the market on the same station-days in small.  Read only.
+// the market's own ladder).  One card per method, led by the selected station (user
+// 2026-10-31 「显示具体切换站点的，而不是平均数」): its own 13:00 in big, its 10:00 and
+// 16:00 and its own station-days against the market in small, the all-station figure
+// last for reference.  Read only.
 const SD_HIT_NAMES = {"P0": "P0 概率", "P0-M": "P0-M 概率", "P1": "P1 概率", market: "市场", F: "确定性预报 F",
   member_bayes: "成员轨迹贝叶斯", D0: "D0 实况模型", MOS: "观测更新型 MOS", WRF: "WRF", best_match: "best_match"};
 const SD_HIT_COL = {"P0": SD_COL.P0, "P0-M": SD_COL["P0-M"], "P1": SD_COL.P1, market: SD_COL.MKT, F: SD_COL.DET,
@@ -23635,23 +23637,25 @@ function sdHitStrip(day){
   // hidden), so tying it to one day hid it whenever another tab was open.
   if(!H || !H.fleet) return "";
   const pc = x => x && x.n ? Math.round(100 * x.hits / x.n) + "%" : "—";
-  const main = "13";
+  const main = "13", S = H.station || {};
+  const vsOf = (m, x) => m !== "market" && x && x.pair_n ? `同站日 ${Math.round(100 * x.pair_hits / x.pair_n)}% 对市场 ${Math.round(100 * x.pair_market_hits / x.pair_n)}%` : "";
   const cards = (H.methods || []).map(m => {
-    const f = (H.fleet[main] || {})[m] || {}, f10 = (H.fleet["10"] || {})[m], f16 = (H.fleet["16"] || {})[m];
-    const own = ((H.station || {})[main] || {})[m];
-    const vs = m !== "market" && f.pair_n ? `同站日 ${Math.round(100 * f.pair_hits / f.pair_n)}% 对市场 ${Math.round(100 * f.pair_market_hits / f.pair_n)}%` : "";
-    const tip = `${SD_HIT_NAMES[m] || m}：事件日当地 10/13/16 点时它指向的温度档（众数，或点估计所在档）是否等于结算实测档；全部站 ${H.days} 个事件日（${H.since} 起）`
-      + `\n13 点：${f.hits || 0}/${f.n || 0}；本站 ${own ? `${own.hits}/${own.n}` : "—"}`
-      + (vs ? `\n同站日（它和市场都有读数的 ${f.pair_n} 个）：它 ${f.pair_hits}，市场 ${f.pair_market_hits}` : "")
+    const f = (H.fleet[main] || {})[m] || {};
+    const own = (S[main] || {})[m] || {}, o10 = (S["10"] || {})[m], o16 = (S["16"] || {})[m];
+    const vs = vsOf(m, own);
+    const tip = `${SD_HIT_NAMES[m] || m}：事件日当地 10/13/16 点时它指向的温度档（众数，或点估计所在档）是否等于结算实测档；${SD.station} ${own.n || 0} 个站日`
+      + `\n${SD.station} 13 点：${own.hits || 0}/${own.n || 0}；全部站 ${f.hits || 0}/${f.n || 0}（${H.days} 个事件日，${H.since} 起）`
+      + (vs ? `\n${SD.station} 同站日（它和市场都有读数的 ${own.pair_n} 个）：它 ${own.pair_hits}，市场 ${own.pair_market_hits}` : "")
       + (m === "MOS" ? `\nMOS 按当前系数重算，只计拟合窗之后的日子（${H.mos_from || "—"} 起），样本外` : "")
       + (m === "F" ? "\nF 是挂牌时刻记下的值，全天不变" : "") + (m === "WRF" ? "\nWRF 只跑成都，当地约 12 点出数" : "");
     return `<div class="sd-hit" style="--c:${SD_HIT_COL[m] || "var(--muted)"}" title="${sdEsc(tip)}">
       <div class="sd-hit-t">${sdEsc(SD_HIT_NAMES[m] || m)}</div>
-      <div class="sd-hit-v">${pc(f)}</div>
-      <div class="sd-hit-s">10点 ${pc(f10)} · 16点 ${pc(f16)} · ${f.n || 0} 站日</div>
-      <div class="sd-hit-s">本站 ${pc(own)}${vs ? ` · ${vs}` : ""}</div></div>`;
+      <div class="sd-hit-v">${pc(own)}</div>
+      <div class="sd-hit-s">10点 ${pc(o10)} · 16点 ${pc(o16)} · ${own.n || 0} 站日</div>
+      ${vs ? `<div class="sd-hit-s">${vs}</div>` : ""}
+      <div class="sd-hit-s muted">全部站 ${pc(f)}</div></div>`;
   }).join("");
-  return `<div class="sd-hit-wrap"><div class="sd-hit-h">真值命中率 <small>当地 13 点时指向的档 = 结算实测档 · 全部站 ${H.days} 个事件日（${sdEsc(H.since || "")} 起）</small></div><div class="sd-hit-grid">${cards}</div></div>`;
+  return `<div class="sd-hit-wrap"><div class="sd-hit-h">真值命中率 · ${sdEsc(SD.station)} <small>当地 13 点时指向的档 = 结算实测档 · 本站已结算站日（全部站 ${H.days} 个事件日，${sdEsc(H.since || "")} 起）</small></div><div class="sd-hit-grid">${cards}</div></div>`;
 }
 // When the estimates close in on the truth, and a 0..100 confidence now (user 2026-10-23
 // 「大概什么时候温度开始靠近并收敛，趋于真值，给我一个信心指标，用100分表示，并前端显示！」):

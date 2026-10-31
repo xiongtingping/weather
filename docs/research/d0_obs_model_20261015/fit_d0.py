@@ -104,6 +104,38 @@ def fit_band(train, stations, use_sat):
     return dict(beta=beta, mu=mu, sd=sd, nf=nf, gamma=gamma, smu=smu, ssd=ssd, scale=scale)
 
 
+# Per-station coefficients (user 2026-10-31 「每个站点一套自己的」,
+# docs/research/station_own_d0_20261031): each station's own slopes and
+# intercept on the band's fleet-standardised features, ridge STATION_LAMBDA
+# toward the fleet fit's, and its own spread scale (mean squared standardised
+# fleet residual, shrunk with n / (n + STATION_SCALE_K)).  Walk-forward
+# 09-17..10-27: LogScore -0.016 [-0.024, -0.009], MAE -0.011 C, both halves;
+# lambda picked on the first half held on the second (MAE -0.009 [-0.015, -0.002]).
+STATION_LAMBDA = 200.0
+STATION_SCALE_K = 30.0
+
+
+def fit_stations(train, stations, model):
+    """station -> {"beta": slopes + intercept on standardised features, "scale", "n"}."""
+
+    nf = model["nf"]
+    by = defaultdict(list)
+    for r in train:
+        by[r["station"]].append(r)
+    out = {}
+    for s, rows in by.items():
+        X = design(rows, stations, True)
+        A = np.hstack([(X[:, :nf] - model["mu"][:nf]) / model["sd"][:nf], np.ones((len(rows), 1))])
+        y = np.array([r["y"] for r in rows])
+        b0 = np.append(model["beta"][:nf], model["beta"][-1] + model["beta"][nf + stations.index(s)])
+        beta = np.linalg.solve(A.T @ A + STATION_LAMBDA * np.eye(nf + 1), A.T @ y + STATION_LAMBDA * b0)
+        sig = np.array([predict(model, r, stations, True)[1] for r in rows])
+        ratio2 = float(np.mean(((y - A @ b0) / sig) ** 2))
+        n = len(rows)
+        out[s] = {"beta": beta.tolist(), "scale": math.sqrt((n * ratio2 + STATION_SCALE_K) / (n + STATION_SCALE_K)), "n": n}
+    return out
+
+
 def spread_design(rows):
     return np.array([[r["feats"]["hours_to_peak"], max(0.0, r["feats"]["hours_to_peak"]), r["feats"]["fc_rise"],
                       r["feats"]["high_minus_base"], abs(r["feats"]["t_minus_fc"])] for r in rows])

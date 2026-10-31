@@ -63,6 +63,25 @@ def test_the_background_reading_applies_the_stored_fit(tmp_path) -> None:
     assert out["vector"]["20°C"] == pytest.approx(0.001, abs=5e-4)       # below the running high: floor only
 
 
+def test_the_station_own_fit_replaces_the_fleet_slopes(tmp_path) -> None:
+    model = json.loads(_model(tmp_path).read_text())
+    band = model["bands"]["all"]
+    nf = band["nf"]
+    own = [0.0] * nf + [1.2]                     # own intercept 1.2, own t_minus_fc slope 0.6
+    own[NUMERIC.index("t_minus_fc")] = 0.6
+    band["station_fits"] = {"ZUUU": {"beta": own, "scale": 2.0, "n": 50}}
+    zone = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(timezone.utc)
+    fc = {"temp": [21.0] * 24, "sw": [0.0] * 24, "cloud": [50.0] * 24, "pr": [0.0] * 24}
+    axis = [{"bucket": f"{t}°C", "lo_c": t - 0.5, "hi_c": t + 0.5} for t in range(20, 30)]
+    out = d0.compute(model, "ZUUU", zone, now, axis, 25.0, 3, _metar(now), fc, None, None, None)
+    # base 25 + 0.6 * (22 - 21) + 1.2 = 26.8; sigma = clamp(1 * 1 * 2) = 2
+    assert out["centre_c"] == 26.8 and out["sigma_c"] == 2.0 and out["station_fit"] is True
+    assert out["station_effect_c"] == pytest.approx(0.7)                  # own intercept - fleet intercept
+    other = d0.compute(model, "EGLC", zone, now, axis, 25.0, 3, _metar(now), fc, None, None, None)
+    assert other["station_fit"] is False and other["centre_c"] == 25.8     # fleet slope, no station effect
+
+
 def test_history_keeps_changes_only_and_the_board_reads_it(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(d0, "OUT_DIR", tmp_path)
     monkeypatch.setattr(d0, "LATEST_PATH", tmp_path / "d0_latest.json")
