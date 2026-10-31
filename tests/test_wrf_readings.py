@@ -362,3 +362,33 @@ def test_backfill_runs_are_their_own_series_and_leave_the_live_forecast_alone(tm
     assert E["fcst_history"] == [["2026-10-22T00:00:00Z", 17.0]]
     assert list(runs["ZUUU"]) == ["2026-10-22T00:00:00Z"]
     assert out["stations"]["ZUUU"]["scores"]["fcst_bf"]["n"] == 1
+
+
+def test_ifs_gdps_nowcast_is_its_own_series_scored_with_the_gfs_route_at_noon(tmp_path: Path, monkeypatch) -> None:
+    """The IFS+GDPS route (user 2026-11-01 「另立一路」): every version on the day with its source
+    cycle and members; scored on the newest version out by 04:00Z, beside the GFS route's newest
+    (frozen issue or re-run) by the same moment -- later versions are shown, not scored."""
+
+    import json  # noqa: PLC0415
+
+    (tmp_path / "run" / "nowcast_ig").mkdir(parents=True)
+    (tmp_path / "run" / "nowcast").mkdir(parents=True)
+    ig = [{"day": "2026-11-01", "station": "ZUUU", "kind": "ifs_gdps", "ready_utc": r, "wrf_sat_tmax_with_obs_c": s,
+           "source_cycle_utc": "2026-10-31T12:00:00Z", "wrf_sat_members": {"ifs": {"tmax_c": s + 1}, "gdps": {"tmax_c": s - 1}}}
+          for r, s in (("2026-11-01T02:20:00Z", 21.0), ("2026-11-01T03:50:00Z", 22.5), ("2026-11-01T05:00:00Z", 30.0))]
+    (tmp_path / "run" / W.NOWCAST_IG_LOG).write_text("\n".join(json.dumps(r) for r in ig) + "\n", encoding="utf-8")
+    gfs = [{"day": "2026-11-01", "station": "ZUUU", "kind": k, "ready_utc": r, "wrf_sat_tmax_with_obs_c": s}
+           for k, r, s in (("early", "2026-11-01T02:30:00Z", 20.0), ("update", "2026-11-01T04:30:00Z", 25.0))]
+    (tmp_path / "run" / "nowcast" / W.NOWCAST_UPDATE_LOG).write_text("\n".join(json.dumps(r) for r in gfs) + "\n", encoding="utf-8")
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {"2026-11-01": 23.0})
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 11, 2, tzinfo=timezone.utc))
+    S = out["stations"]["ZUUU"]
+    E = S["days"]["2026-11-01"]
+    assert [u["sat_obs_c"] for u in E["nowcast_ig_updates"]] == [21.0, 22.5, 30.0]
+    assert E["nowcast_ig_updates"][0]["members_sat_c"] == {"ifs": 22.0, "gdps": 20.0}
+    assert E["nowcast_ig_updates"][0]["source_cycle_utc"] == "2026-10-31T12:00:00Z"
+    sc = S["nowcast_ig_scores"]
+    assert sc["sat_obs_c"]["bias_c"] == -0.5 and sc["gfs_sat_obs_c"]["bias_c"] == -3.0
+    assert sc["at_utc"] == "04:00" and sc["ig_vs_gfs"] == {"n": 1}
+    assert S["nowcast_scores"] == {}  # the frozen GFS issue's own score is untouched

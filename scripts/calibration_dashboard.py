@@ -19190,14 +19190,20 @@ function wrfTmaxPanel(){
     // 单独画」): taken with the airport's maximum it sat on the reports and hid WRF's call.
     const issues = [L.nowcast, ...(L.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_c != null)
       .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
-    const issueLines = !issues.length ? [] : [
-      {pts: issues.map(r => [r.ready_utc, r.sat_c]), stroke: "#0e9f6e", width: 2, label: "WRF 各版",
+    // The IFS+GDPS route (user 2026-11-01 「另立一路」): its versions on the same clock.
+    const igIssues = (L.nowcast_ig_updates || []).filter(r => r && r.ready_utc && r.sat_c != null)
+      .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
+    const igTip = r => `IFS+GDPS · ${r.source_cycle_utc ? `${String(r.source_cycle_utc).slice(5, 10)} ${String(r.source_cycle_utc).slice(11, 13)}Z 三日预报接 00Z` : ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · 两成员均值 ${n(r.sat_c, 2)}°C${r.members_sat_c ? `（IFS ${n(r.members_sat_c.ifs, 2)} · GDPS ${n(r.members_sat_c.gdps, 2)}）` : ""}`;
+    const issueLines = !issues.length && !igIssues.length ? [] : [
+      ...(!igIssues.length ? [] : [{pts: igIssues.map(r => [r.ready_utc, r.sat_c]), stroke: "#e36209", width: 2, label: "IFS+GDPS 各版",
+       marks: igIssues.map(r => [r.ready_utc, r.sat_c, igTip(r)])}]),
+      {pts: issues.map(r => [r.ready_utc, r.sat_c]), stroke: "#0e9f6e", width: 2, label: "GFS 各版",
        marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${n(r.sat_c, 2)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${n(r.sat_obs_c, 2)}°C` : ""}`])},
       {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: "#6e7781", dash: true, label: "已报最高"},
       {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: "#f778ba", width: 1, label: "市场均值"},
-      ...(L.truth_c == null ? [] : [{pts: [[issues[0].ready_utc, L.truth_c], [issues[issues.length - 1].ready_utc, L.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
-    const newest = issues[issues.length - 1];
-    const issueRow = issues.length < 2 ? "" : `<div class="trend-t" style="margin-top:8px" title="早版（约 10:00、10:30）、冻结版（11:10 起跑）、之后每半小时一张新云图重跑一次；每个点＝那一版 WRF 自己算的今天最高温（不与报文取大），灰虚线＝出数时机场已报最高，横轴＝出数时间；悬停看是哪一版、用哪张云图">今天 WRF 各版最高温 · 按出数时间（${issues.length} 版，最新 ${h(loc(newest.ready_utc))} WRF ${n(newest.sat_c)}°C）</div>
+      ...(L.truth_c == null || !issues.length ? [] : [{pts: [[issues[0].ready_utc, L.truth_c], [issues[issues.length - 1].ready_utc, L.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
+    const newest = issues[issues.length - 1], igNewest = igIssues[igIssues.length - 1];
+    const issueRow = issues.length + igIssues.length < 2 ? "" : `<div class="trend-t" style="margin-top:8px" title="GFS 一路：早版（约 10:00、10:30）、冻结版（11:10 起跑）、之后每半小时一张新云图重跑一次；IFS+GDPS 一路：最新一轮三日预报两成员从当天 00Z 接着跑、加同样的卫星云，每张新云图一版，画两成员均值。每个点＝那一版 WRF 自己算的今天最高温（不与报文取大），灰虚线＝出数时机场已报最高，横轴＝出数时间；悬停看是哪一版、用哪张云图">今天 WRF 各版最高温 · 按出数时间（${newest ? `GFS ${issues.length} 版，最新 ${h(loc(newest.ready_utc))} ${n(newest.sat_c)}°C` : ""}${newest && igNewest ? "；" : ""}${igNewest ? `IFS+GDPS ${igIssues.length} 版，最新 ${h(loc(igNewest.ready_utc))} ${n(igNewest.sat_c)}°C` : ""}）</div>
       <div class="card">${sdTimeTempChart(issueLines, null, null, {h: 180})}</div>`;
     // Core only (user 2026-10-26 「信息还是太多，分散注意力，提炼核心信息即可」): today's issues on the
     // clock; who is nearest at the 11:30 moment (mean error, days won); the coming days; the last
@@ -19209,6 +19215,8 @@ function wrfTmaxPanel(){
     const ranked = RANK.map(c => [c, meanErr(c), wins(c)]).filter(x => x[1]).sort((a, b) => a[1][0] - b[1][0]);
     // One muted line (user 2026-10-31 「突出预报，弱化谁更准」): the ranking no longer leads.
     const rankStrip = !ranked.length ? "" : `<div class="muted" style="font-size:12px;margin-top:8px" title="同一时刻（11:30 出数）各家报的最高温对实测的平均误差；10-01 起没有实盘出数的日子用严格回放（只用 11:10 前数据）；括号＝天数 · 当天最准次数">11:30 时刻平均误差：${ranked.map(([c, m, w]) => `<span style="white-space:nowrap"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${c[2]};margin-right:4px"></i>${h(c[1])} <span class="mono">${n(m[0], 2)}°</span>（${m[1]} 天 · ${w} 次）</span>`).join(" · ")}</div>`;
+    const IGS = S.nowcast_ig_scores || {}, igN = (IGS.sat_obs_c || {}).n || 0;
+    const igStrip = !igN ? "" : `<div class="muted" style="font-size:12px;margin-top:4px" title="两路各取当地 12:00 前最新一版（已与机场已报最高取大）对实测；IFS+GDPS 一路 11-01 起前向，GFS 一路含冻结版与重跑">临近预报两路（12:00 时刻，${igN} 天）：IFS+GDPS 平均误差 <span class="mono">${n(IGS.sat_obs_c.mae_c, 2)}°</span>（偏差 ${sg(IGS.sat_obs_c.bias_c, 2)}）${(IGS.gfs_sat_obs_c || {}).n ? ` · GFS <span class="mono">${n(IGS.gfs_sat_obs_c.mae_c, 2)}°</span>（偏差 ${sg(IGS.gfs_sat_obs_c.bias_c, 2)}，${IGS.gfs_sat_obs_c.n} 天）` : ""}</div>`;
     const recent = judged.slice(0, 7);
     const recentTable = !recent.length ? "" : `<div class="trend-t" style="margin-top:10px">最近 ${recent.length} 天 · 实测与各家（粗框＝当天最准）</div>
       <div class="card" style="overflow-x:auto"><table style="width:100%"><thead><tr><th>日期</th><th>实测</th>${RANK.map(c => `<th style="text-align:right;color:${c[2]}">${h(c[1])}</th>`).join("")}</tr></thead><tbody>${recent.map(d => { const E = S.days[d];
@@ -19222,7 +19230,7 @@ function wrfTmaxPanel(){
     // market and the airport's maximum as of that issue, and the truth once the day is in.
     const frozenIssue = issues.find(r => (r.kind || "frozen") === "frozen");
     const todayCards = !newest ? "" : `<div class="grid g4" style="margin-top:4px">
-      ${big(`今天 ${h(last.slice(5))} · WRF 最新`, `${n(newest.sat_obs_c)}°C`, "", `${h(loc(newest.ready_utc))} 出数 · 共 ${issues.length} 版${frozenIssue && frozenIssue !== newest ? ` · 11:30 版 ${n(frozenIssue.sat_obs_c)}°` : ""}`, "用卫星实测云的 WRF，已与当时机场已报最高取大")}
+      ${big(`今天 ${h(last.slice(5))} · WRF 最新（GFS）`, `${n(newest.sat_obs_c)}°C`, "", `${h(loc(newest.ready_utc))} 出数 · 共 ${issues.length} 版${frozenIssue && frozenIssue !== newest ? ` · 11:30 版 ${n(frozenIssue.sat_obs_c)}°` : ""}${igNewest ? ` · IFS+GDPS ${h(loc(igNewest.ready_utc))} ${n(igNewest.sat_obs_c)}°` : ""}`, "用卫星实测云的 WRF，已与当时机场已报最高取大")}
       ${big("市场", newest.market_mean_c == null ? "—" : `${n(newest.market_mean_c)}°C`, "", `同一时刻 · ${h(loc(newest.ready_utc))}`, "WRF 最新一版出数那一刻的盘口均值")}
       ${big("机场已报最高", newest.metar_max_so_far_c == null ? "—" : `${n(newest.metar_max_so_far_c, 0)}°C`, "", `截至 ${h(loc(newest.ready_utc))}`)}
       ${big("实测最高温", L.truth_c == null ? "未结束" : `${n(L.truth_c, 0)}°C`, "", L.truth_c == null ? "当地日结束后落库" : `WRF 最新 ${sg(newest.sat_obs_c - L.truth_c)}°`)}</div>`;
@@ -19232,18 +19240,24 @@ function wrfTmaxPanel(){
     // IFS+GDPS after) and the same-day nowcast issues -- as chips and on one clock (x = init time
     // for a three-day run, issue time for a nowcast).
     const TD = S.days[today] || {}, tf = (TD.configs || {}).fcst || null, tIssues = today === last ? issues : [];
-    const KCOL = {gfs: "#8b949e", fcst: "#39c5cf", nowcast: "#0e9f6e"}, KWORD = {gfs: "GFS 驱动", fcst: "IFS+GDPS 平均", nowcast: "当天临近预报"};
+    const tIg = today === last ? igIssues : [];
+    const KCOL = {gfs: "#8b949e", fcst: "#39c5cf", nowcast: "#0e9f6e", nowcast_ig: "#e36209"},
+      KWORD = {gfs: "GFS 驱动", fcst: "IFS+GDPS 平均", nowcast: "临近预报·GFS", nowcast_ig: "临近预报·IFS+GDPS"};
     const ups = (TD.fcst_history || []).map(x => ({t: x[0], v: x[1], kind: String(x[0]) >= "2026-10-30T06:00:00Z" ? "fcst" : "gfs",
         label: `${String(x[0]).slice(5, 10)} ${String(x[0]).slice(11, 13)}Z`}))
       .concat(tIssues.map(r => ({t: r.ready_utc, v: r.sat_c, kind: "nowcast", label: `今天 ${loc(r.ready_utc)}`})))
+      .concat(tIg.map(r => ({t: r.ready_utc, v: r.sat_c, kind: "nowcast_ig", label: `今天 ${loc(r.ready_utc)}`})))
       .filter(u => u.v != null && isFinite(u.v)).sort((a, b) => String(a.t).localeCompare(String(b.t)));
     // Re-runs of past cycles (run/fcst_backfill): on the chart only, never in the chips or the change.
     const bfUps = (TD.fcst_bf_history || []).filter(x => x[1] != null && isFinite(x[1]))
       .map(x => ({t: x[0], v: x[1], kind: "bf", label: `${String(x[0]).slice(5, 10)} ${String(x[0]).slice(11, 13)}Z`}));
     KCOL.bf = KCOL.fcst; KWORD.bf = "IFS+GDPS 补跑（不计前向）";
-    const nowV = tIssues.length ? tIssues[tIssues.length - 1] : null, heroV = nowV ? nowV.sat_obs_c : tf ? tf.tmax_c : null;
+    // The hero is the newest nowcast of either route.
+    const nowV = [tIssues[tIssues.length - 1], tIg[tIg.length - 1]].filter(Boolean)
+      .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc))).pop() || null, nowIg = nowV && tIg.includes(nowV);
+    const heroV = nowV ? nowV.sat_obs_c : tf ? tf.tmax_c : null;
     const arrow = (d, fs) => d == null ? "" : ` <span class="${d > 0.05 ? "down" : d < -0.05 ? "up" : "flat"}"${fs ? ` style="font-size:${fs}px"` : ""}>${d > 0.05 ? "↑" : d < -0.05 ? "↓" : "→"}${n(Math.abs(d))}</span>`;
-    const heroSub = nowV ? `${h(loc(nowV.ready_utc))} 临近预报（卫星云）· 已与机场已报最高取大`
+    const heroSub = nowV ? `${h(loc(nowV.ready_utc))} 临近预报·${nowIg ? `IFS+GDPS（IFS ${n((nowV.members_sat_c || {}).ifs)} · GDPS ${n((nowV.members_sat_c || {}).gdps)}）` : "GFS"}（卫星云）· 已与机场已报最高取大`
       : tf ? `${String(tf.init_utc || "").slice(5, 10)} ${String(tf.init_utc || "").slice(11, 13)}Z 起报${tf.members ? ` · IFS ${n(tf.members.ifs)} · GDPS ${n(tf.members.gdps)}` : ""} · ${WRF_STATUS[tf.status] || h(tf.status || "")}${tf.peak_covered ? ` · ${h(tf.at_local || "")} 最高` : ""}` : "";
     const shownUps = ups.slice(-14);
     const chips = shownUps.map((u, i) => { const prev = i ? shownUps[i - 1] : ups[ups.length - shownUps.length - 1];
@@ -19278,17 +19292,17 @@ function wrfTmaxPanel(){
       return `<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天最高温的逐次预报">${g}</svg>
         <div class="muted" style="font-size:11.5px">每个点＝一次更新报的今天最高温；横轴＝三日预报的起报时次（UTC）或当天临近预报的出数时间（当地）；实心点＝最新；${bfUps.length ? "青色虚线方块＝IFS+GDPS 补跑过去时次（10-30 前实时为 GFS 驱动，补跑只作对照、不计前向成绩）；" : ""}悬停看与上一次的差</div>`;
     })();
-    const todayHero = heroV == null && !ups.length && !bfUps.length ? "" : `<div class="card" style="border-left:4px solid ${KCOL[nowV ? "nowcast" : "fcst"]};margin-top:4px">
+    const todayHero = heroV == null && !ups.length && !bfUps.length ? "" : `<div class="card" style="border-left:4px solid ${KCOL[nowV ? (nowIg ? "nowcast_ig" : "nowcast") : "fcst"]};margin-top:4px">
       <div class="muted">今天 ${h(today.slice(5))} 周${wk(today)} · WRF 最高温预报</div>
       <div class="mono" style="font-size:46px;font-weight:800;line-height:1.1">${n(heroV)}°C${arrow(ups.length > 1 ? ups[ups.length - 1].v - ups[ups.length - 2].v : null, 22)}</div>
       <div class="muted mono">${heroSub}${TD.truth_c == null ? "" : ` · 实测 ${n(TD.truth_c, 0)}°C`}</div>
-      <div class="muted" style="margin-top:10px;font-size:12px" title="三日预报按起报时次排（起报后约 8 小时出数），临近预报按出数时间；箭头＝比上一次">每次更新 · ${ups.length} 次${ups.length > shownUps.length ? `（显示最近 ${shownUps.length} 次）` : ""} · ${["gfs", "fcst", "nowcast"].filter(k => ups.some(u => u.kind === k)).map(k => `<span style="color:${KCOL[k]}">■</span> ${KWORD[k]}`).join("　")}${bfUps.length ? `　<span style="color:${KCOL.bf}">□</span> ${KWORD.bf}（${bfUps.length} 次，只在图上）` : ""}</div>
+      <div class="muted" style="margin-top:10px;font-size:12px" title="三日预报按起报时次排（起报后约 8 小时出数），临近预报按出数时间；箭头＝比上一次">每次更新 · ${ups.length} 次${ups.length > shownUps.length ? `（显示最近 ${shownUps.length} 次）` : ""} · ${["gfs", "fcst", "nowcast", "nowcast_ig"].filter(k => ups.some(u => u.kind === k)).map(k => `<span style="color:${KCOL[k]}">■</span> ${KWORD[k]}`).join("　")}${bfUps.length ? `　<span style="color:${KCOL.bf}">□</span> ${KWORD.bf}（${bfUps.length} 次，只在图上）` : ""}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:12.5px">${chips}</div>
       ${upChart ? `<div style="margin-top:8px">${upChart}</div>` : ""}</div>`;
     // The forecast leads (user 2026-10-31 「突出预报，弱化谁更准」「预报突出今天（每次的更新）」): today
     // and its updates, today's nowcast cards and issue curve, then the coming days; who was nearest
     // is one line, its last-seven-days table in the fold.
-    return todayHero + todayCards + issueRow + aheadRow + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + rankStrip
+    return todayHero + todayCards + issueRow + aheadRow + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + rankStrip + igStrip
       + `<details style="margin-top:10px"><summary class="muted">更多：最近几天各家对比、今天各家明细、各配置误差、逐日全表、回算</summary>`
       + recentTable + top + ncRow + tiles + table + restTable + `</details>`;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;

@@ -79,6 +79,12 @@ NOWCAST_UPDATE_LOG = "log_update.jsonl"
 #: 前向天数」), with the aerosol arm (「测试打开气溶胶（雾霾）的效果」): ``run/replay/log.jsonl``, its own
 #: segment and score, never the forward test's.
 REPLAY_LOG = "replay/log.jsonl"
+#: The same-day nowcast driven by IFS + GDPS (run/nowcast_ig.sh, user 2026-11-01 「另立一路」): the
+#: newest live three-day forecast's two members carried on from their 00Z restart with the satellite
+#: cloud, one record per scan in ``run/nowcast_ig/log.jsonl``.  Its own forward series: scored, with
+#: the GFS route beside it, on what each said as of IG_SCORE_AT_UTC (12:00 local, before the peak).
+NOWCAST_IG_LOG = "nowcast_ig/log.jsonl"
+IG_SCORE_AT_UTC = "04:00"
 REPLAY_ARMS = ("sat", "ctl", "sat_aer")
 #: The hindcast experiments' results frozen before their files were archived (user
 #: 2026-10-22 「保留代码和结果，归档实验数据，冻结配置！」): a run absent on disk is filled
@@ -337,6 +343,36 @@ def nowcast_updates(root: Path = WRF_ROOT) -> dict[str, list[dict[str, Any]]]:
     return out
 
 
+def nowcast_ig_updates(root: Path = WRF_ROOT) -> dict[str, list[dict[str, Any]]]:
+    """day (YYYY-MM-DD) -> the day's IFS+GDPS nowcast records, oldest first."""
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        lines = (root / "run" / NOWCAST_IG_LOG).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get("day") and r.get("ready_utc"):
+            out.setdefault(str(r["day"]), []).append(r)
+    for recs in out.values():
+        recs.sort(key=lambda r: str(r["ready_utc"]))
+    return out
+
+
+def _as_of(recs: list[dict[str, Any]], at: str) -> dict[str, Any] | None:
+    """The newest record out by ``at`` (ISO UTC), records sorted by ready time."""
+
+    out = None
+    for r in recs:
+        if str(r.get("ready_utc") or "") <= at:
+            out = r
+    return out
+
+
 def replay_records(root: Path = WRF_ROOT) -> dict[str, dict[str, Any]]:
     """day -> the day's newest replay record."""
 
@@ -570,6 +606,36 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                     "status": _status(d, now.timestamp()), "domain": "d01", "run": last.get("run"),
                     "init_utc": _iso(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc) - timedelta(hours=6)),
                     **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
+        # The IFS+GDPS route: every version, each member's maximum, and its source cycle; scored
+        # with the GFS route's newest version (frozen issue or re-run) as of the same moment.
+        ig_errs: dict[str, list[float]] = {}
+        ig_pairs: list[float] = []
+        gfs_issues = nowcast_issues(root)
+        for day, recs in nowcast_ig_updates(root).items():
+            recs = [r for r in recs if r.get("station", station) == station]
+            if not recs:
+                continue
+            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+            entry["nowcast_ig_updates"] = [
+                {**_nowcast_view(r), "source_cycle_utc": r.get("source_cycle_utc"),
+                 "members_sat_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_sat_members") or {}).items()},
+                 "members_ctl_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_ctl_members") or {}).items()}}
+                for r in recs]
+            t = entry["truth_c"]
+            at = f"{day}T{IG_SCORE_AT_UTC}:00Z"
+            ig = _as_of(recs, at)
+            if t is None or ig is None:
+                continue
+            v = _nowcast_view(ig)
+            for k in ("sat_obs_c", "ctl_obs_c", "market_mean_c", "belief_mean_c"):
+                if v[k] is not None:
+                    ig_errs.setdefault(k, []).append(float(v[k]) - t)
+            g = _as_of([r for r in gfs_issues.get(day, []) if r.get("station", station) == station], at)
+            gv = (g or {}).get("wrf_sat_tmax_with_obs_c")
+            if gv is not None:
+                ig_errs.setdefault("gfs_sat_obs_c", []).append(float(gv) - t)
+                if v["sat_obs_c"] is not None:
+                    ig_pairs.append(abs(float(v["sat_obs_c"]) - t) - abs(float(gv) - t))
         # The replay segment: each arm with the observed maximum so far, the market and the
         # served belief as of the nominal issue, scored on their own; and each arm paired
         # against the sat arm on the same days.
@@ -605,6 +671,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             "scores": {c: _stats(errs.get(c, [])) for c in configs},
             "gfs_score": _stats(gfs_errs),
             "nowcast_scores": {k: _stats(v) for k, v in nowcast_errs.items()},
+            "nowcast_ig_scores": {"at_utc": IG_SCORE_AT_UTC, **{k: _stats(v) for k, v in ig_errs.items()},
+                                  "ig_vs_gfs": _paired(ig_pairs)},
             "replay_scores": {k: _stats(v) for k, v in replay_errs.items()},
             "replay_vs_sat": {k: _paired(v) for k, v in replay_pairs.items()},
         }
@@ -644,6 +712,7 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
     return {"state": "ok", "as_of_utc": value.get("as_of_utc"), "timezone": S.get("timezone"),
             "truth_c": E.get("truth_c"), "gfs": E.get("gfs"), "nowcast": nowcast, "runs": keep,
             "nowcast_first": E.get("nowcast"), "nowcast_updates": updates,
+            "nowcast_ig_updates": E.get("nowcast_ig_updates") or [],
             "fcst_history": E.get("fcst_history") or [],
             "nowcast_scores": S.get("nowcast_scores") or {},
             "oracle_score": scores.get("satcld_rhc85"), "selfcloud_score": scores.get("indep_rhc85")}
