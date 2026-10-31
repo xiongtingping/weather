@@ -250,3 +250,59 @@ def test_issue_view_names_the_newest_scan() -> None:
     assert W._nowcast_view({"last_sat_hour_utc": 4, "last_scan_utc": "04:30"})["last_scan_utc"] == "04:30"
     assert W._nowcast_view({"last_sat_hour_utc": 2})["last_scan_utc"] == "02:00"
     assert W._nowcast_view({})["last_scan_utc"] is None
+
+
+def test_two_driver_forecast_is_the_mean_of_its_members_daily_maxima(tmp_path: Path, monkeypatch) -> None:
+    """User 2026-10-31 「驱动方案：上 IFS+GDPS 平均」: a run with ifs/ and gdps/ member runs stands
+    as the mean of the members' daily maxima, and a day only one member reached is not shown."""
+
+    d = tmp_path / "run" / "fcst" / "20261025_from_2026102200"
+    for m in W.FCST_MEMBERS:
+        (d / m).mkdir(parents=True)
+        (d / m / "wrfout_d01_x").write_bytes(b"")
+    assert {day for c, day, _ in W.run_dirs(tmp_path) if c == W.FORECAST} == {"20261022", "20261023", "20261024", "20261025"}
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {"2026-10-23": 20.0})
+    monkeypatch.setattr(W, "_domain_files", lambda d: ("d01", [str(d)]))
+    monkeypatch.setattr(W, "_status", lambda d, now: "complete")
+
+    class Cache:
+        read = 0
+
+        def frames(self, path, var, point):
+            if var != "T2":
+                return {}
+            # 10-23 local 08..20 = 00..12Z; IFS peaks 22.0 at 14 local, GDPS 18.0 at 16 local
+            if path.endswith("ifs"):
+                f = {f"2026-10-23_{h:02d}:00:00": 22.0 - abs(h - 6) for h in range(0, 13)}
+                f["2026-10-24_02:00:00"] = 20.0   # IFS alone reaches 10-24
+                return f
+            return {f"2026-10-23_{h:02d}:00:00": 18.0 - abs(h - 8) / 2 for h in range(0, 13)}
+
+    runs: dict = {}
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 10, 25, tzinfo=timezone.utc),
+                    cache=Cache(), fcst_runs=runs)
+    days = out["stations"]["ZUUU"]["days"]
+    rec = days["2026-10-23"]["configs"]["fcst"]
+    assert rec["members"] == {"ifs": 22.0, "gdps": 18.0} and rec["tmax_c"] == 20.0
+    assert rec["peak_covered"] and rec["status"] == "complete" and rec["error_c"] == 0.0
+    assert "fcst" not in (days.get("2026-10-24") or {}).get("configs", {})
+    assert runs["ZUUU"]["2026-10-22T00:00:00Z"]["2026-10-23"]["members"] == {"ifs": 22.0, "gdps": 18.0}
+
+
+def test_a_frame_slot_left_as_nul_bytes_by_a_killed_chunk_ends_the_file(tmp_path: Path) -> None:
+    """wrf.exe killed at its chunk alarm leaves the Times slot it was writing as NUL bytes
+    (10-29..10-31 every board refresh raised on it); the frames before it still count."""
+
+    import h5py
+    import numpy as np
+
+    path = tmp_path / "wrfout_d01_x"
+    stamps = [b"2026-10-31_00:00:00", b"2026-10-31_01:00:00", b"\x00" * 19]
+    with h5py.File(path, "w") as f:
+        f["Times"] = np.array([np.frombuffer(s, dtype="S1") for s in stamps])
+        f["XLAT"] = np.full((3, 2, 2), 30.6)
+        f["XLONG"] = np.full((3, 2, 2), 103.9)
+        f["T2"] = np.full((3, 2, 2), 293.15)
+    frames = W._file_frames(str(path), "T2", (30.6, 103.9))
+    assert frames == {"2026-10-31_00:00:00": 20.0, "2026-10-31_01:00:00": 20.0}

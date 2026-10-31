@@ -47,6 +47,12 @@ BASELINE = "baseline"
 #: GFS 00Z to three days ahead 12Z): every local day from the init's date to the last
 #: day is read from the run, and for each day the newest init that reached it is shown.
 FORECAST = "fcst"
+#: Two-driver forecast (user 2026-10-31 「驱动方案：上 IFS+GDPS 平均」): from then on each run holds
+#: one WRF per driver under ``<run>/ifs`` and ``<run>/gdps`` (nudged, same physics), and the day's
+#: forecast is the mean of the members' daily maxima.  Over 4 replayed inits (14 station-days) IFS
+#: alone ran +0.98 (MAE 1.35), GDPS -1.04 (1.44), their mean -0.03 (0.64):
+#: wrf_apps run/exp_fcstphys/results.json.  Earlier runs are single GFS runs read as before.
+FCST_MEMBERS = ("ifs", "gdps")
 #: The same-day nowcast forward test (run/nowcast.sh, user 2026-10-22 「做当天临近预报的前向测试」):
 #: two arms per day under ``run/nowcast/<YYYYMMDD>/{sat,ctl}`` -- Himawari cloud in the
 #: radiation up to the latest scan at issue time, and the same run without it -- and
@@ -108,7 +114,14 @@ def run_dirs(root: Path = WRF_ROOT) -> list[tuple[str, str, Path]]:
     for d in sorted(glob.glob(str(root / "run" / "nowcast" / "2*"))):
         for arm, config in NOWCAST_ARMS.items():
             out.append((config, Path(d).name, Path(d) / arm))
-    return [(c, day, d) for c, day, d in out if len(day) == 8 and day.isdigit() and glob.glob(str(d / "wrfout_d0*"))]
+    return [(c, day, d) for c, day, d in out if len(day) == 8 and day.isdigit()
+            and (glob.glob(str(d / "wrfout_d0*")) or any(glob.glob(str(d / m / "wrfout_d0*")) for m in FCST_MEMBERS))]
+
+
+def _members(d: Path) -> list[Path]:
+    """The per-driver runs of a two-driver forecast, or [] for a single run."""
+
+    return [d / m for m in FCST_MEMBERS if (d / m).is_dir()]
 
 
 def _status(d: Path, now: float) -> str:
@@ -151,9 +164,12 @@ def _file_frames(path: str, var: str, point: tuple[float, float]) -> dict[str, f
         times = []
         for k in range(f["Times"].shape[0]):
             try:
-                times.append(f["Times"][k].tobytes().decode())
+                t = f["Times"][k].tobytes().decode()
+                # a run killed at its chunk alarm leaves the slot it was writing as NUL bytes
+                _utc(t)
             except (OSError, ValueError):
                 break
+            times.append(t)
         for k, t in enumerate(times):
             try:
                 v = f[var][k, 0, j, i] if var == "TT" else f[var][k, j, i]
@@ -392,15 +408,41 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
         gfs_errs: list[float] = []
         for config, ymd, d in runs:
             day = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
-            dom, files = _domain_files(d)
-            frames: dict[str, float] = {}
-            for fn in files:
-                for t, v in cache.frames(fn, "T2", point).items():
-                    frames.setdefault(t, v)
-            m = _day_max(frames, day, zone)
-            if m is None:
-                continue
-            status = _status(d, now.timestamp())
+            members = _members(d) if config == FORECAST else []
+            member_max: dict[str, float] = {}
+            if members:
+                # Every member must reach the day; the mean series only places the peak, the
+                # maximum is the members' mean daily maximum (what the replay scored).
+                per = []
+                for md in members:
+                    dom, files = _domain_files(md)
+                    mf: dict[str, float] = {}
+                    for fn in files:
+                        for t, v in cache.frames(fn, "T2", point).items():
+                            mf.setdefault(t, v)
+                    per.append((md, mf, _day_max(mf, day, zone)))
+                if len(per) != len(FCST_MEMBERS) or any(mm is None for _, _, mm in per):
+                    continue
+                common = set.intersection(*(set(mf) for _, mf, _ in per))
+                frames = {t: sum(mf[t] for _, mf, _ in per) / len(per) for t in common}
+                m = _day_max(frames, day, zone)
+                if m is None:
+                    continue
+                member_max = {md.name: round(mm["tmax_c"], 2) for md, _, mm in per}
+                m["tmax_c"] = round(sum(member_max.values()) / len(member_max), 2)
+                m["peak_covered"] = all(mm["peak_covered"] for _, _, mm in per)
+                st = [_status(md, now.timestamp()) for md, _, _ in per]
+                status = "complete" if all(s == "complete" for s in st) else "running" if "running" in st else "stopped"
+            else:
+                dom, files = _domain_files(d)
+                frames = {}
+                for fn in files:
+                    for t, v in cache.frames(fn, "T2", point).items():
+                        frames.setdefault(t, v)
+                m = _day_max(frames, day, zone)
+                if m is None:
+                    continue
+                status = _status(d, now.timestamp())
             init = min(frames) if frames else None
             if config == FORECAST:
                 ic = d.name.partition("_from_")[2]
@@ -410,6 +452,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 init = f"{(datetime.strptime(ymd, '%Y%m%d') - timedelta(days=1)):%Y-%m-%d}_18:00:00"
             rec = {"status": status, "domain": dom, "init_utc": _iso(_utc(init)) if init else None,
                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
+            if member_max:
+                rec["members"] = member_max
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
             # The driving GFS: a newer forecast init replaces an older one's for the day.  A day
             # with no baseline run (10-21, run only for the hindcast table, user 2026-10-22
@@ -423,7 +467,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                     entry["gfs"] = {"tmax_c": g["tmax_c"], "at_local": g["at_local"]}
             if config == FORECAST:
                 fcst_runs.setdefault(station, {}).setdefault(rec["init_utc"], {})[day] = {
-                    k: rec[k] for k in ("tmax_c", "at_local", "peak_covered", "status")}
+                    k: rec[k] for k in ("tmax_c", "at_local", "peak_covered", "status", "members") if k in rec}
                 # A newer init stands for the day only once it covers the day's peak hours, or
                 # when the older one did not either: the 10-24 12Z run starts at 20:00 local and
                 # must not replace 10-22 00Z's whole-day 10-24 maximum with an evening reading.
