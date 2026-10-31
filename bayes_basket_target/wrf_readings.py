@@ -24,6 +24,7 @@ from __future__ import annotations
 import glob
 import hashlib
 import json
+import math
 import os
 import sqlite3
 import time
@@ -37,7 +38,7 @@ from .canonical_contract import FORMAL_TRUTH_LANES_SQL
 
 ROOT = Path(__file__).resolve().parents[1]
 WRF_ROOT = Path(os.environ.get("PM_WRF_APPS_ROOT") or "/Volumes/weather_data/wrf_apps")
-CACHE_PATH = ROOT / "data" / "runtime" / "wrf_readings" / "frames_v1.json"
+CACHE_PATH = ROOT / "data" / "runtime" / "wrf_readings" / "frames_v2.json"  # v2: fill-value frames left out
 READING_NAME = "wrf_tmax"
 #: The station point the WRF project's own tools read (run/tools/zuuu_t2.py).
 STATIONS = {"ZUUU": (30.578, 103.947)}
@@ -174,6 +175,10 @@ def _file_frames(path: str, var: str, point: tuple[float, float]) -> dict[str, f
             try:
                 v = f[var][k, 0, j, i] if var == "TT" else f[var][k, j, i]
             except (OSError, KeyError, ValueError):
+                continue
+            # ... or with its stamp written and the field still the netCDF fill (9.97e36); the
+            # next chunk restarts at that time and writes it
+            if not math.isfinite(float(v)) or float(v) > 1e30:
                 continue
             out[t] = round(float(v) - 273.15, 2)
     return out

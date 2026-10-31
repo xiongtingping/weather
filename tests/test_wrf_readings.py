@@ -306,3 +306,19 @@ def test_a_frame_slot_left_as_nul_bytes_by_a_killed_chunk_ends_the_file(tmp_path
         f["T2"] = np.full((3, 2, 2), 293.15)
     frames = W._file_frames(str(path), "T2", (30.6, 103.9))
     assert frames == {"2026-10-31_00:00:00": 20.0, "2026-10-31_01:00:00": 20.0}
+
+
+def test_a_frame_stamped_but_still_the_netcdf_fill_is_left_for_the_next_chunk(tmp_path: Path) -> None:
+    """A chunk killed after writing a frame's Times but before its T2 leaves the netCDF fill
+    (9.97e36); the 10-30 12Z GDPS member's 11-02 maximum read 5e36 and broke the board chart."""
+
+    import h5py
+    import numpy as np
+
+    path = tmp_path / "wrfout_d01_x"
+    with h5py.File(path, "w") as f:
+        f["Times"] = np.array([np.frombuffer(s, dtype="S1") for s in (b"2026-11-02_03:00:00", b"2026-11-02_03:30:00")])
+        f["XLAT"] = np.full((2, 2, 2), 30.6)
+        f["XLONG"] = np.full((2, 2, 2), 103.9)
+        f["T2"] = np.array([np.full((2, 2), 293.15), np.full((2, 2), 9.969209968386869e36)])
+    assert W._file_frames(str(path), "T2", (30.6, 103.9)) == {"2026-11-02_03:00:00": 20.0}
