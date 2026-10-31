@@ -24415,18 +24415,29 @@ function sdDirection(D, R){
   const mRow = C.length ? `<div class="sd-dp sd-dp-c sd-dp-h"><span>来源</span><span>轮</span><span></span><span>改动</span><span class="sd-dpz" title="该家每次改动的标准差（09-22..10-08，°C），固定参数">平时幅度</span><span class="sd-dpz" title="改动 ÷ 平时幅度">折算</span></div>${compRows}`
     + `<div class="sd-dp sd-dp-c sd-dp-m" title="M＝上表各家折算之和；|M|＜${sdN(quiet, 0)} 为静默、不定方向"><span><b>M</b> <span class="muted">＝折算之和</span></span><span></span><span class="muted">${sdEsc(mWord)}</span>`
     + `<b class="mono sd-dir-mbig" style="color:${sdDirColor(D.momentum_side)}">${sdSg(D.momentum, 2)}</b></div><div style="text-align:right">${sdMomTier(D.momentum)}</div>` : "";
-  // M through the day: the quiet band shaded, each reading a dot in its side's colour.
+  // M over the last 24 hours (user 2026-11-01 「显示最近24h的」): a time axis
+  // ending at the snapshot, M held at each reading until the next change (the
+  // history keeps changes only), the quiet band shaded, each change a dot in its
+  // side's colour; the reading from before the window starts the line at its edge.
   let trend = "";
   const pts = hist.filter(h => h.momentum != null);
-  if(pts.length > 1){
+  const t1 = Date.parse(D.computed_at_utc || (pts.length ? pts[pts.length - 1].at_utc : "")), t0 = t1 - 24 * 3600e3;
+  if(pts.length && Number.isFinite(t1)){
     const W = 300, Hh = 64, lim = Math.max(quiet * 1.5, ...pts.map(h => Math.abs(h.momentum)));
-    const x = i => 6 + (W - 12) * i / (pts.length - 1), y = v => Hh / 2 - (Hh / 2 - 6) * v / lim;
+    const x = t => 6 + (W - 12) * (Math.max(t0, t) - t0) / (t1 - t0), y = v => Hh / 2 - (Hh / 2 - 6) * v / lim;
     const band = `<rect x="0" y="${y(quiet).toFixed(1)}" width="${W}" height="${(y(-quiet) - y(quiet)).toFixed(1)}" fill="var(--muted)" opacity=".12"/>`;
-    const line = `<polyline points="${pts.map((h, i) => `${x(i).toFixed(1)},${y(h.momentum).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.2"/>`;
-    const dots = pts.map((h, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(h.momentum).toFixed(1)}" r="3.2" fill="${sdDirColor(h.side)}"><title>${sdEsc(`${sdLocal(h.at_utc, true)} · ${sdDirWord(h.side)} · M ${sdSg(h.momentum, 2)} · 众数 ${h.mode || "—"} · 最新一轮 ${sdDirRun(h.newest_run_utc)}`)}</title></circle>`).join("");
-    trend = `<div class="sd-dir-colh" style="margin-top:10px">M 走势 <span class="muted">（灰带＝静默 |M|＜${sdN(quiet, 0)}）</span></div>
-      <svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" width="100%" style="max-width:${W}px" role="img" aria-label="动量 M 的走势">${band}<line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)"/>${line}${dots}</svg>
-      <div class="muted sd-sub">${sdLocal(pts[0].at_utc, true)} → ${sdLocal(pts[pts.length - 1].at_utc, true)} · ${pts.length} 次</div>`;
+    const step = pts.map((h, i) => {
+      const xi = x(Date.parse(h.at_utc)), xn = i + 1 < pts.length ? x(Date.parse(pts[i + 1].at_utc)) : x(t1), yi = y(h.momentum).toFixed(1);
+      return `${xi.toFixed(1)},${yi} ${xn.toFixed(1)},${yi}`;
+    }).join(" ");
+    const line = `<polyline points="${step}" fill="none" stroke="var(--muted)" stroke-width="1.2"/>`;
+    const inWin = pts.filter(h => Date.parse(h.at_utc) >= t0);
+    const dots = inWin.map(h => `<circle cx="${x(Date.parse(h.at_utc)).toFixed(1)}" cy="${y(h.momentum).toFixed(1)}" r="3.2" fill="${sdDirColor(h.side)}"><title>${sdEsc(`${sdLocal(h.at_utc, true)} · ${sdDirWord(h.side)} · M ${sdSg(h.momentum, 2)} · 众数 ${h.mode || "—"} · 最新一轮 ${sdDirRun(h.newest_run_utc)}`)}</title></circle>`).join("");
+    const ticks = [0, 6, 12, 18, 24].map(k => { const xt = x(t0 + k * 3600e3);
+      return `<line x1="${xt.toFixed(1)}" x2="${xt.toFixed(1)}" y1="${Hh - 4}" y2="${Hh}" stroke="var(--line)"/>`; }).join("");
+    trend = `<div class="sd-dir-colh" style="margin-top:10px">M 走势 <span class="muted">最近 24 小时（灰带＝静默 |M|＜${sdN(quiet, 0)}）</span></div>
+      <svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" width="100%" style="max-width:${W}px" role="img" aria-label="动量 M 最近 24 小时的走势">${band}<line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)"/>${ticks}${line}${dots}</svg>
+      <div class="muted sd-sub">${sdLocal(new Date(t0).toISOString(), true)} → ${sdLocal(new Date(t1).toISOString(), true)} · 变化 ${inWin.length} 次${inWin.length < pts.length ? " · 窗口前 M " + sdSg(pts[0].momentum, 2) : ""}</div>`;
   }
   const source = `<div class="sd-dir-col"><div class="sd-dir-colh">动量 M 的来源 <span class="muted">各家最新一轮的改动（AIFS 单成员对两轮前）</span></div>${mRow ? `<div class="sd-dps">${mRow}</div>` : '<div class="muted sd-sub">无两轮可比</div>'}${trend}</div>`;
   const parts = `<div class="sd-dir-col">${sdDirParts(D) || '<div class="muted sd-sub">无模型分</div>'}<div class="muted sd-sub" style="margin-top:6px">物理特征 ${sdEsc(X.lag || "—")}${X.fetched_at_utc ? " · 取于 " + sdLocal(X.fetched_at_utc, true) : ""}</div></div>`;

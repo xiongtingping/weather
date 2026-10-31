@@ -609,8 +609,13 @@ def write_board_snapshot(doc: Mapping[str, Any], path: Path | str | None = None)
 #: 0.01), the model's side, the market's modal bucket or the newest run behind
 #: the momentum does; the modal bucket's probability moves every snapshot and
 #: is carried, not compared.  The first reading a station-day ever gets is
-#: marked ``baseline``: nothing before it was recorded.
-BOARD_HISTORY_MAX = 8
+#: marked ``baseline``: nothing before it was recorded.  Readings from the
+#: last 24 hours are kept, plus the last one before them so the board knows
+#: where M stood when the window opens (user 2026-11-01 「显示最近24h的」; it
+#: was the last eight, which on a busy day covered seven hours);
+#: ``BOARD_HISTORY_MAX`` only bounds the file.
+BOARD_HISTORY_HOURS = 24
+BOARD_HISTORY_MAX = 200
 _HISTORY_COMPARED = ("side", "momentum", "model_side", "mode", "newest_run_utc")
 
 
@@ -642,8 +647,16 @@ def with_history(doc: dict[str, Any], previous: Mapping[str, Any] | None) -> dic
                 history.append({**now, "baseline": True})
             elif any(history[-1].get(k) != now[k] for k in _HISTORY_COMPARED):
                 history.append(now)
-            day["history"] = history[-BOARD_HISTORY_MAX:]
+            day["history"] = _within_window(history, at)[-BOARD_HISTORY_MAX:]
     return doc
+
+
+def _within_window(history: list[dict[str, Any]], at: str) -> list[dict[str, Any]]:
+    start = (datetime.fromisoformat(at.replace("Z", "+00:00")) - timedelta(hours=BOARD_HISTORY_HOURS))
+    inside = [i for i, h in enumerate(history)
+              if datetime.fromisoformat(str(h["at_utc"]).replace("Z", "+00:00")) >= start]
+    first = inside[0] if inside else len(history) - 1
+    return history[max(0, first - 1):] if inside and first > 0 else history[first:]
 
 
 def _read_board(path: Path | str | None) -> dict[str, Any]:

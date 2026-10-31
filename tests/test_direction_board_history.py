@@ -44,20 +44,27 @@ def test_a_new_run_a_new_momentum_or_a_new_mode_is_a_change() -> None:
     assert hist[2]["mode"] == "25°C" and "baseline" not in hist[2]
 
 
-def test_the_history_is_bounded_and_survives_through_the_file(tmp_path) -> None:
+def test_the_history_keeps_the_last_24_hours_and_survives_through_the_file(tmp_path) -> None:
     path = tmp_path / "board.json"
-    for i in range(ds.BOARD_HISTORY_MAX + 3):
-        doc = ds.with_history(_doc(f"2026-10-12T{i:02d}:00:00Z", momentum=-1.0 - i), ds._read_board(path))
+    # A change every three hours for 30 hours: 10-12 00Z .. 10-13 06Z.
+    stamps = [f"2026-10-{12 + h // 24}T{h % 24:02d}:00:00Z" for h in range(0, 31, 3)]
+    for i, at in enumerate(stamps):
+        doc = ds.with_history(_doc(at, momentum=-1.0 - i), ds._read_board(path))
         ds.write_board_snapshot(doc, path)
     hist = _history(json.loads(path.read_text(encoding="utf-8")))
-    assert len(hist) == ds.BOARD_HISTORY_MAX and hist[-1]["momentum"] == -1.0 - (ds.BOARD_HISTORY_MAX + 2)
+    # 06Z on the 12th opens the window; 03Z is kept as where M stood then.
+    assert [h["at_utc"] for h in hist][:2] == ["2026-10-12T03:00:00Z", "2026-10-12T06:00:00Z"]
+    assert len(hist) == 10 and hist[-1]["momentum"] == -1.0 - (len(stamps) - 1)
+    # Nothing changes for two days: the last reading stays, alone.
+    doc = ds.with_history(_doc("2026-10-15T06:00:00Z", momentum=hist[-1]["momentum"]), ds._read_board(path))
+    assert [h["at_utc"] for h in _history(doc)] == ["2026-10-13T06:00:00Z"]
 
 
 def test_the_resident_job_writes_the_history_and_the_card_shows_the_change() -> None:
     source = (ROOT / "bayes_basket_target" / "direction_signal.py").read_text(encoding="utf-8")
     assert "write_board_snapshot(with_history(doc, _read_board(board_path)), board_path)" in source
     dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "sdDirChange(hist[hist.length-1]" in dashboard and "<summary>细节</summary>" in dashboard
+    assert "sdDirChange(hist[hist.length-1]" in dashboard and "<summary class=\"muted\">变化记录（" in dashboard
 
 
 def test_the_card_grades_momentum_in_five_tiers() -> None:
