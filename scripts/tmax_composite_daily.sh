@@ -55,7 +55,10 @@ step prev1 900 "$PY" "$M1/ingest_open_meteo.py" --task prev1 --lane research --r
 step sat 900 "$PY" "$M1/ingest_open_meteo.py" --task sat --lane research --refresh-days 10 --max-weight 150 --budget 800
 step sarah3 900 "$PY" "$M1/ingest_open_meteo.py" --task sarah3 --lane research --refresh-days 10 --max-weight 64 --budget 800
 step goes 1800 "$PY" "$M1/ingest_goes.py" --budget 1500
-step features 900 "$PY" "$M3/features.py"
+# features rebuilds every station-day from the 2 GB store on the spinning disk:
+# 7 min by day, past 15 min at night beside WRF and the cold offload (10-30 and
+# 10-31 both killed at 900 s, the card stuck on 10-25's days), so 30 min.
+step features 1800 "$PY" "$M3/features.py"
 step forward 900 "$PY" "$M3/forward.py"
 # Weekly refit (Mondays UTC, or when no refit exists yet): a new version the
 # board reads from its next request; the old ones stay for the forward record.

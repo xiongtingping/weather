@@ -123,10 +123,10 @@ def main() -> int:
         tmp = RUNTIME_DIR / "tmax_composite_shift_v1.json.tmp"
         tmp.write_text(text)
         tmp.replace(RUNTIME_DIR / "tmax_composite_shift_v1.json")
-        print("written", RUNTIME_DIR, out["version"], len(D.stations), "stations")
+        print("written", RUNTIME_DIR, out["version"], len(out["phys"]["c"]), "stations")
     else:
         OUT.write_text(text)
-        print("written", OUT, len(D.stations), "stations")
+        print("written", OUT, len(out["phys"]["c"]), "stations")
     return 0
 
 
