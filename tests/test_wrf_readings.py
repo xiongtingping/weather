@@ -322,3 +322,43 @@ def test_a_frame_stamped_but_still_the_netcdf_fill_is_left_for_the_next_chunk(tm
         f["XLONG"] = np.full((2, 2, 2), 103.9)
         f["T2"] = np.array([np.full((2, 2), 293.15), np.full((2, 2), 9.969209968386869e36)])
     assert W._file_frames(str(path), "T2", (30.6, 103.9)) == {"2026-11-02_03:00:00": 20.0}
+
+
+def test_backfill_runs_are_their_own_series_and_leave_the_live_forecast_alone(tmp_path: Path, monkeypatch) -> None:
+    """User 2026-10-31 「接回放+补 00/12Z」: two-driver re-runs of past cycles under run/fcst_backfill
+    stand as ``fcst_bf`` with their own history; the live GFS run for the same init keeps ``fcst``
+    and the persisted live history gains nothing."""
+
+    live = tmp_path / "run" / "fcst" / "20261025_from_2026102200"
+    live.mkdir(parents=True)
+    (live / "wrfout_d01_x").write_bytes(b"")
+    for init in ("2026102200", "2026102212"):
+        for m in W.FCST_MEMBERS:
+            md = tmp_path / "run" / "fcst_backfill" / f"20261025_from_{init}" / m
+            md.mkdir(parents=True)
+            (md / "wrfout_d01_x").write_bytes(b"")
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {"2026-10-23": 20.0})
+    monkeypatch.setattr(W, "_domain_files", lambda d: ("d01", [str(d)]))
+    monkeypatch.setattr(W, "_status", lambda d, now: "complete")
+
+    class Cache:
+        read = 0
+
+        def frames(self, path, var, point):
+            if var != "T2":
+                return {}
+            base = 17.0 if "/fcst/" in path else 21.0 if "2026102200/ifs" in path else 19.0 if "2026102200" in path else 22.0
+            return {f"2026-10-23_{h:02d}:00:00": base - abs(h - 6) / 4 for h in range(0, 13)}
+
+    runs: dict = {}
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 10, 25, tzinfo=timezone.utc),
+                    cache=Cache(), fcst_runs=runs)
+    E = out["stations"]["ZUUU"]["days"]["2026-10-23"]
+    assert E["configs"]["fcst"]["tmax_c"] == 17.0 and "members" not in E["configs"]["fcst"]
+    bf = E["configs"]["fcst_bf"]
+    assert bf["init_utc"] == "2026-10-22T12:00:00Z" and bf["tmax_c"] == 22.0 and bf["change_c"] == 2.0
+    assert E["fcst_bf_history"] == [["2026-10-22T00:00:00Z", 20.0], ["2026-10-22T12:00:00Z", 22.0]]
+    assert E["fcst_history"] == [["2026-10-22T00:00:00Z", 17.0]]
+    assert list(runs["ZUUU"]) == ["2026-10-22T00:00:00Z"]
+    assert out["stations"]["ZUUU"]["scores"]["fcst_bf"]["n"] == 1

@@ -54,6 +54,12 @@ FORECAST = "fcst"
 #: alone ran +0.98 (MAE 1.35), GDPS -1.04 (1.44), their mean -0.03 (0.64):
 #: wrf_apps run/exp_fcstphys/results.json.  Earlier runs are single GFS runs read as before.
 FCST_MEMBERS = ("ifs", "gdps")
+#: Two-driver runs for the days before the switch (user 2026-10-31 「接回放+补 00/12Z」): the four
+#: replayed inits linked in and the 00/12Z cycles 10-26..10-30 re-run, under ``run/fcst_backfill``
+#: laid out as ``run/fcst``.  Their own series, never the live forecast's history or score: the
+#: replayed days are the ones that chose the drivers.
+FORECAST_BF = "fcst_bf"
+FCST_CONFIGS = (FORECAST, FORECAST_BF)
 #: The same-day nowcast forward test (run/nowcast.sh, user 2026-10-22 「做当天临近预报的前向测试」):
 #: two arms per day under ``run/nowcast/<YYYYMMDD>/{sat,ctl}`` -- Himawari cloud in the
 #: radiation up to the latest scan at issue time, and the same run without it -- and
@@ -100,18 +106,19 @@ def run_dirs(root: Path = WRF_ROOT) -> list[tuple[str, str, Path]]:
         out.append((BASELINE, Path(d).parent.name, Path(d)))
     for d in sorted(glob.glob(str(root / "run" / "exp" / "*" / "2*"))):
         out.append((Path(d).parent.name, Path(d).name, Path(d)))
-    fcst = []
-    for d in glob.glob(str(root / "run" / "fcst" / "2*_from_*")):
-        last, _, init = Path(d).name.partition("_from_")
-        if len(init) == 10 and init.isdigit() and len(last) == 8 and last.isdigit():
-            fcst.append((init, last, Path(d)))
-    # Oldest init first: compute() lets a later init replace an earlier one only
-    # for the days it has reached.
-    for init, last, d in sorted(fcst):
-        day, end = datetime.strptime(init[:8], "%Y%m%d"), datetime.strptime(last, "%Y%m%d")
-        while day <= end:
-            out.append((FORECAST, f"{day:%Y%m%d}", d))
-            day += timedelta(days=1)
+    for sub, config in (("fcst", FORECAST), ("fcst_backfill", FORECAST_BF)):
+        fcst = []
+        for d in glob.glob(str(root / "run" / sub / "2*_from_*")):
+            last, _, init = Path(d).name.partition("_from_")
+            if len(init) == 10 and init.isdigit() and len(last) == 8 and last.isdigit():
+                fcst.append((init, last, Path(d)))
+        # Oldest init first: compute() lets a later init replace an earlier one only
+        # for the days it has reached.
+        for init, last, d in sorted(fcst):
+            day, end = datetime.strptime(init[:8], "%Y%m%d"), datetime.strptime(last, "%Y%m%d")
+            while day <= end:
+                out.append((config, f"{day:%Y%m%d}", d))
+                day += timedelta(days=1)
     for d in sorted(glob.glob(str(root / "run" / "nowcast" / "2*"))):
         for arm, config in NOWCAST_ARMS.items():
             out.append((config, Path(d).name, Path(d) / arm))
@@ -411,9 +418,10 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
         days: dict[str, dict[str, Any]] = {}
         errs: dict[str, list[float]] = {}
         gfs_errs: list[float] = []
+        bf_runs: dict[str, dict[str, Any]] = {}  # the backfill is re-read every time, never persisted
         for config, ymd, d in runs:
             day = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
-            members = _members(d) if config == FORECAST else []
+            members = _members(d) if config in FCST_CONFIGS else []
             member_max: dict[str, float] = {}
             if members:
                 # Every member must reach the day; the mean series only places the peak, the
@@ -449,7 +457,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                     continue
                 status = _status(d, now.timestamp())
             init = min(frames) if frames else None
-            if config == FORECAST:
+            if config in FCST_CONFIGS:
                 ic = d.name.partition("_from_")[2]
                 init = f"{ic[:4]}-{ic[4:6]}-{ic[6:8]}_{ic[8:10]}:00:00"
             if config in NOWCAST_ARMS.values():
@@ -470,13 +478,13 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 g = _day_max(gfs, day, zone)
                 if g:
                     entry["gfs"] = {"tmax_c": g["tmax_c"], "at_local": g["at_local"]}
-            if config == FORECAST:
-                fcst_runs.setdefault(station, {}).setdefault(rec["init_utc"], {})[day] = {
+            if config in FCST_CONFIGS:
+                (fcst_runs.setdefault(station, {}) if config == FORECAST else bf_runs).setdefault(rec["init_utc"], {})[day] = {
                     k: rec[k] for k in ("tmax_c", "at_local", "peak_covered", "status", "members") if k in rec}
                 # A newer init stands for the day only once it covers the day's peak hours, or
                 # when the older one did not either: the 10-24 12Z run starts at 20:00 local and
                 # must not replace 10-22 00Z's whole-day 10-24 maximum with an evening reading.
-                held = entry["configs"].get(FORECAST)
+                held = entry["configs"].get(config)
                 if not held or rec["peak_covered"] or not held.get("peak_covered"):
                     entry["configs"][config] = rec
                 continue  # scored below, once per day on the init that stands
@@ -486,27 +494,29 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 errs.setdefault(config, []).append(rec["error_c"])
         # Run by run: each day's forecast from every init that covered its peak hours,
         # and the standing run's change against the one before it.
-        by_day: dict[str, list[list[Any]]] = {}
-        for init, per_day in sorted((fcst_runs.get(station) or {}).items()):
-            for day, r in per_day.items():
-                if r.get("peak_covered"):
-                    by_day.setdefault(day, []).append([init, r["tmax_c"]])
-        for day, hist in by_day.items():
-            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
-            entry["fcst_history"] = hist
-            rec = entry["configs"].get(FORECAST)
-            if rec and rec.get("peak_covered"):
-                before = [h for h in hist if h[0] < rec["init_utc"]]
-                if before:
-                    rec["prev_init_utc"], rec["prev_tmax_c"] = before[-1]
-                    rec["change_c"] = round(rec["tmax_c"] - before[-1][1], 2)
+        for config, src, key in ((FORECAST, fcst_runs.get(station) or {}, "fcst_history"), (FORECAST_BF, bf_runs, "fcst_bf_history")):
+            by_day: dict[str, list[list[Any]]] = {}
+            for init, per_day in sorted(src.items()):
+                for day, r in per_day.items():
+                    if r.get("peak_covered"):
+                        by_day.setdefault(day, []).append([init, r["tmax_c"]])
+            for day, hist in by_day.items():
+                entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+                entry[key] = hist
+                rec = entry["configs"].get(config)
+                if rec and rec.get("peak_covered"):
+                    before = [h for h in hist if h[0] < rec["init_utc"]]
+                    if before:
+                        rec["prev_init_utc"], rec["prev_tmax_c"] = before[-1]
+                        rec["change_c"] = round(rec["tmax_c"] - before[-1][1], 2)
         for entry in days.values():
             if entry.get("gfs") and entry["truth_c"] is not None:
                 gfs_errs.append(entry["gfs"]["tmax_c"] - entry["truth_c"])
-            rec = entry["configs"].get(FORECAST)
-            if rec and entry["truth_c"] is not None and rec["status"] == "complete" and rec["peak_covered"]:
-                rec["error_c"] = round(rec["tmax_c"] - entry["truth_c"], 2)
-                errs.setdefault(FORECAST, []).append(rec["error_c"])
+            for config in FCST_CONFIGS:
+                rec = entry["configs"].get(config)
+                if rec and entry["truth_c"] is not None and rec["status"] == "complete" and rec["peak_covered"]:
+                    rec["error_c"] = round(rec["tmax_c"] - entry["truth_c"], 2)
+                    errs.setdefault(config, []).append(rec["error_c"])
         try:
             frozen = json.loads((root / "run" / FROZEN_HINDCAST).read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -587,7 +597,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                     if view.get(k) is not None:
                         replay_pairs.setdefault(k, []).append(abs(float(view[k]) - t) - abs(float(view["sat_obs_c"]) - t))
         configs = sorted({c for e in days.values() for c in e["configs"]},
-                         key=lambda c: (c != "nowcast_sat", c != "nowcast_ctl", c != FORECAST, c != BASELINE, c))
+                         key=lambda c: (c != "nowcast_sat", c != "nowcast_ctl", c != FORECAST, c != FORECAST_BF, c != BASELINE, c))
         latest = max(days) if days else None
         stations[station] = {
             "state": "ok" if days else "no_runs", "timezone": str(zone), "point": list(point),
