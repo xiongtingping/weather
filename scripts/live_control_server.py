@@ -1347,7 +1347,34 @@ def native_order_confirmation(body: dict) -> tuple[bool, str]:
 STATION_DAY_CACHE_SEC = 20.0
 _STATION_DAY_CACHE: dict[str, tuple[float, dict]] = {}
 _STATION_DAY_LOCK = threading.Lock()
-STATION_DAY_LOCK_WAIT_SEC = 10.0
+# A build runs on its own thread and a request waits for it at most this
+# long.  Under a saturated disk one build took minutes (2026-11-01); the board
+# holds its panel "busy" for the whole read and drops order clicks meanwhile
+# (user 「点击"确认下单"无效」).  Past the wait the last payload is served
+# marked stale_busy and the build keeps filling the cache; the order
+# endpoints re-check the newest book themselves.
+STATION_DAY_WAIT_SEC = 10.0
+_STATION_DAY_BUILDS: dict[str, threading.Thread] = {}
+
+
+def _station_day_build(station: str, force: bool) -> None:
+    from bayes_basket_target import station_day_board  # noqa: PLC0415
+
+    try:
+        payload = {**station_day_board.build(station), "fleet_shape": _fleet_shape(force),
+                   "skew_history": station_day_board.skew_history(),
+                   "mode_agreement": station_day_board.mode_agreement_history()}
+    except Exception as exc:  # noqa: BLE001 -- the next request reports it
+        payload = {"error": f"{type(exc).__name__}: {exc}"}
+    with _STATION_DAY_LOCK:
+        if "error" not in payload:
+            _STATION_DAY_CACHE[station] = (time.monotonic(), payload)
+        else:
+            _STATION_DAY_ERRORS[station] = payload["error"]
+        _STATION_DAY_BUILDS.pop(station, None)
+
+
+_STATION_DAY_ERRORS: dict[str, str] = {}
 
 
 def station_day(query: str) -> dict:
@@ -1363,31 +1390,38 @@ def station_day(query: str) -> dict:
     if str((params.get("token_only") or ["0"])[0]) == "1":
         # The panel's poll: one index seek a day, no build.
         return station_day_board.probability_token(station)
-    # One build at a time, but never an unbounded queue behind it: a build
-    # that hung on an untimed read on 2026-11-01 held this lock for tens of
-    # minutes, and every panel read and the order button's refresh waited on
-    # it (user 「点击"确认下单"无效」).  Past the wait the last good payload is
-    # served, marked stale; the order endpoints re-check the newest book.
-    if not _STATION_DAY_LOCK.acquire(timeout=STATION_DAY_LOCK_WAIT_SEC):
+
+    with _STATION_DAY_LOCK:
         cached = _STATION_DAY_CACHE.get(station)
-        if cached:
-            return {**cached[1], "cache": "stale_busy",
-                    "cache_age_seconds": round(time.monotonic() - cached[0], 1)}
-        raise TimeoutError(f"station-day 正在重算，{STATION_DAY_LOCK_WAIT_SEC:.0f} 秒内没有让出")
-    try:
-        cached = _STATION_DAY_CACHE.get(station)
-        if (cached and not force and time.monotonic() - cached[0] < STATION_DAY_CACHE_SEC
-                and cached[1].get("token") == station_day_board.probability_token(station)["token"]):
-            return {**cached[1], "fleet_shape": _fleet_shape(force),
-                    "skew_history": station_day_board.skew_history(),
-                    "mode_agreement": station_day_board.mode_agreement_history(), "cache": "hit"}
-        payload = station_day_board.build(station)
-        _STATION_DAY_CACHE[station] = (time.monotonic(), payload)
-        return {**payload, "fleet_shape": _fleet_shape(force),
-                "skew_history": station_day_board.skew_history(),
-                "mode_agreement": station_day_board.mode_agreement_history(), "cache": "miss"}
-    finally:
-        _STATION_DAY_LOCK.release()
+    if (cached and not force and time.monotonic() - cached[0] < STATION_DAY_CACHE_SEC
+            and cached[1].get("token") == station_day_board.probability_token(station)["token"]):
+        return {**cached[1], "cache": "hit"}
+    # Only the request that starts a build waits for it.  One arriving while
+    # a build is already running gets the last payload at once: the board's
+    # poll re-asks every 30 s while a long build runs, and each wait would be
+    # another window in which its order button does nothing.
+    with _STATION_DAY_LOCK:
+        build = _STATION_DAY_BUILDS.get(station)
+        started = build is None
+        if started:
+            _STATION_DAY_ERRORS.pop(station, None)
+            build = threading.Thread(target=_station_day_build, args=(station, force),
+                                     name=f"station-day-{station}", daemon=True)
+            _STATION_DAY_BUILDS[station] = build
+            build.start()
+    if started:
+        build.join(STATION_DAY_WAIT_SEC)
+    with _STATION_DAY_LOCK:
+        fresh = _STATION_DAY_CACHE.get(station)
+        error = _STATION_DAY_ERRORS.get(station)
+    if fresh and (cached is None or fresh[0] > cached[0]):
+        return {**fresh[1], "cache": "miss"}
+    if not build.is_alive() and error:
+        raise RuntimeError(error)
+    if fresh:
+        return {**fresh[1], "cache": "stale_busy",
+                "cache_age_seconds": round(time.monotonic() - fresh[0], 1)}
+    raise TimeoutError("station-day 正在重算（后台继续），还没有可用的上一份数据")
 
 
 # The fleet's mean-rung-against-mode tally rides on every panel read (user
