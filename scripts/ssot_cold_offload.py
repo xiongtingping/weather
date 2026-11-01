@@ -95,6 +95,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
     DEFAULT_MIN_HOLDOUT_DAYS,
+    DEFAULT_VALID_DAYS as ACTIVATION_VALID_DAYS,
     ROLLING_TRAIN_WINDOW_DAYS,
     STABLE_POOL_GATE_HISTORY_KEY,
     STABLE_POOL_GATE_LOOKBACK_DAYS,
@@ -621,6 +622,18 @@ def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
         else:
             days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
     return min(days) if days else None
+
+
+#: An activation leaves this many days after it stopped being valid.  Every
+#: production reader asks for activations valid at the decision being made
+#: (P0's seats, the certificate clock, the worker's scope listing); the
+#: margin is for a replay of the last few days.
+ACTIVATION_EXPIRED_MARGIN_DAYS = 7
+#: A selection evidence row is named again by a later mint at most ~5.4 days
+#: after the first (measured 2026-11-01 over 11,269 shared rows); an evidence
+#: row leaves only once its training window is older than an activation's
+#: whole life, the margin and that again.
+SELECTION_EVIDENCE_HOT_DAYS = ACTIVATION_VALID_DAYS + ACTIVATION_EXPIRED_MARGIN_DAYS + 7
 
 
 def bridge_reader_floor(conn: sqlite3.Connection) -> str | None:
@@ -1247,6 +1260,77 @@ POLICIES += (
             ),
         ),
     ),
+    # 2026-11-01 (user 「Do P0 tables」): the P0 certification chain, 11.7 GiB
+    # with no rule, growing ~80k activations a day (one artifact and one
+    # selection evidence each, ~0.5 GiB a day all told).  An activation is
+    # valid DEFAULT_VALID_DAYS (30) from its mint and every production reader
+    # asks for those valid at the decision being made, so it leaves once it
+    # expired ACTIVATION_EXPIRED_MARGIN_DAYS ago -- except the newest of each
+    # generation key (writers mint MAX(generation)+1) and those whose
+    # artifact a hot OOS prediction names (the training facts join the
+    # prediction to its activation for the generation).  The cross artifact
+    # is minted for exactly one activation (1,833,692 of 1,833,692 measured)
+    # and leaves with it.
+    TablePolicy(
+        table="calibration_native_ensemble_activation",
+        time_column="valid_until_utc",
+        hot_days=ACTIVATION_EXPIRED_MARGIN_DAYS,
+        readers=(
+            "native_ensemble_p0 (seats, family map, bias), native_ensemble_certificate_clock, "
+            "production_worker scope listing, follow_run, republisher_fallback_activation, "
+            "board served_p0_seats, the dashboard: activations valid at the instant asked "
+            "(now, or the decision being served); native_ensemble_oos / certificate clock "
+            "writers: MAX(generation) per key and the identical activation for reuse; "
+            "native_ensemble_training_facts: the activation of each OOS prediction's artifact."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("artifact_kind", "station_id", "ensemble_system_id_or_star", "season_bin",
+                     "lead_bucket", "run_cycle", "available_system_set_hash_or_star"),
+                order=("generation",), count=1,
+                why="the writers number the next activation MAX(generation)+1 per key",
+            ),
+        ),
+        keep_named=(
+            KeepNamed(
+                name="oos_prediction_artifact",
+                column="artifact_id",
+                sql="SELECT DISTINCT cross_ensemble_artifact_id FROM calibration_cross_native_ensemble_oos_prediction",
+                why="the training facts join each hot OOS prediction to its artifact's activation",
+            ),
+        ),
+        children=(
+            ChildRows(
+                table="calibration_cross_native_ensemble_artifact",
+                column="cross_ensemble_artifact_id",
+                parent_column="artifact_id",
+                why="minted for exactly this activation and read through it",
+            ),
+        ),
+    ),
+    # The selection evidence a cross artifact names by selection_evidence_sha256.
+    # It has no time of its own beyond its training window and may be named by
+    # a second artifact minted days later, so it is no child: it leaves when
+    # no hot artifact names it and its window is older than an activation's
+    # whole life with margins.
+    TablePolicy(
+        table="calibration_cross_native_ensemble_selection_evidence",
+        time_column="train_end_date",
+        hot_days=SELECTION_EVIDENCE_HOT_DAYS,
+        readers=(
+            "native_ensemble_p0 / native_ensemble_oos / certificate clock / board: the "
+            "evidence a hot artifact names, by content_sha256; the dashboard's member-seat "
+            "counts: rows past its last rowid."
+        ),
+        keep_named=(
+            KeepNamed(
+                name="hot_artifact",
+                column="content_sha256",
+                sql="SELECT selection_evidence_sha256 FROM calibration_cross_native_ensemble_artifact",
+                why="every hot artifact's evidence is read by its hash",
+            ),
+        ),
+    ),
 )
 
 POLICY_BY_TABLE = {policy.table: policy for policy in POLICIES}
@@ -1440,8 +1524,10 @@ def _child_reasons(conn: sqlite3.Connection, child: ChildRows) -> list[str]:
     }
     if child.column not in leading:
         reasons.append(f"child_index_missing:{child.table}.{child.column}")
-    if _foreign_key_children(conn, child.table):
-        reasons.append(f"child_has_foreign_key_children:{child.table}")
+    # A child another table names by a declared foreign key is kept by the
+    # parent's own rules (the activation keeps every artifact an OOS
+    # prediction names); the delete connection enforces the key besides, and
+    # a hit stops the table instead of deleting.
     for name, trigger_sql in _triggers(conn, child.table):
         if " DELETE ON " in _normalized_sql(trigger_sql) and not _is_append_only_guard(trigger_sql):
             reasons.append(f"child_delete_trigger_not_a_guard:{name}")
@@ -2708,11 +2794,15 @@ def move_table(
                     delete.execute("ROLLBACK")
                     return "ssot_child_rows_changed_since_copy:" + child.table
                 gone = 0
-                for chunk in _chunks([int(k[0]) for k in kids], READ_CHUNK):
-                    gone += delete.execute(
-                        f"DELETE FROM {_q(child.table)} WHERE rowid IN ({','.join('?' * len(chunk))})",
-                        tuple(chunk),
-                    ).rowcount
+                try:
+                    for chunk in _chunks([int(k[0]) for k in kids], READ_CHUNK):
+                        gone += delete.execute(
+                            f"DELETE FROM {_q(child.table)} WHERE rowid IN ({','.join('?' * len(chunk))})",
+                            tuple(chunk),
+                        ).rowcount
+                except sqlite3.IntegrityError:
+                    delete.execute("ROLLBACK")
+                    return "ssot_child_named_by_foreign_key:" + child.table
                 if gone != len(kids):
                     delete.execute("ROLLBACK")
                     return "ssot_child_delete_count_mismatch:" + child.table
