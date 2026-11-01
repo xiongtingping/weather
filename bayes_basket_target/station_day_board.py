@@ -2143,7 +2143,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
     }
 
 
-def _taf(conn, station: str, day: str) -> dict[str, Any]:
+def _taf(conn, station: str, day: str, inbox: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The station-day's TAFs by availability: the forward capture table, and the revision inbox's
+    official receipts it does not hold (the table stopped on 10-27 with the retired P0-M)."""
     rows = conn.execute(
         "SELECT issued_at_utc, provider_available_at_utc, revision_kind, revision_sequence,"
         " valid_from_utc, valid_until_utc, tx_c, tx_available, cloud_cover_fraction,"
@@ -2157,6 +2159,22 @@ def _taf(conn, station: str, day: str) -> dict[str, Any]:
         "tx_available": bool(r[7]), "cloud_cover_fraction": _float(r[8]),
         "precipitation_probability": _float(r[9]), "wind_speed_mps": _float(r[10]),
     } for r in rows]
+    held = {c["issued_at_utc"] for c in captures}
+    for c in (inbox or {}).get("captures") or []:
+        rev, f = c.get("forecast_revision") or {}, c.get("taf_fields") or {}
+        if (c.get("station_id"), c.get("event_date")) != (station, day) or c.get("source_class") != "official_forward_native_receipt":
+            continue
+        issued = rev.get("issued_at_utc")
+        if not issued or issued in held:
+            continue
+        held.add(issued)
+        captures.append({
+            "issued_at_utc": issued, "available_at_utc": c.get("provider_available_at_utc"), "kind": c.get("native_revision_kind"),
+            "sequence": rev.get("sequence"), "valid_from_utc": rev.get("valid_from_utc"), "valid_until_utc": rev.get("valid_until_utc"),
+            "tx_c": _float(f.get("tx_c")), "tx_available": f.get("tx_c") is not None,
+            "cloud_cover_fraction": _float(f.get("cloud_cover_fraction")),
+            "precipitation_probability": _float(f.get("precipitation_probability")), "wind_speed_mps": _float(f.get("wind_speed_mps"))})
+    captures.sort(key=lambda c: (str(c.get("available_at_utc") or ""), c.get("sequence") or 0))
     return {"captures": captures}
 
 
@@ -2324,7 +2342,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         market = _market(conn, station, day, axis) if axis else {"available": False, "reason": "no_ladder"}
         return _with_composite_buckets({"role": role, "event_date": day, "available": False, "stages": {}, "timeline": [],
                                         **({"axis": axis} if axis else {}), "market": market,
-                                        **_day_observed(conn, station, day, role, zone)})
+                                        **_day_observed(conn, station, day, role, zone, taf_inbox=taf_inbox)})
     axis = ladder_axis(newest["ordinals"],
                        _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
     metar = _metar(station, day, zone)
@@ -2365,7 +2383,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "head_stage": head_stage, "stages": stages,
         "timeline": _timeline(conn, station, day, axis),
         "market": market,
-        **_day_observed(conn, station, day, role, zone, metar),
+        **_day_observed(conn, station, day, role, zone, metar, taf_inbox=taf_inbox),
     })
 
 
@@ -2470,7 +2488,7 @@ def _registry_axis(conn, station: str, day: str) -> list[dict[str, Any]] | None:
 
 
 def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
-                  metar: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                  metar: list[dict[str, Any]] | None = None, taf_inbox: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The parts of a day that need no envelope: reports, TAF, rain, sky,
     the read-only models and the tropical card."""
 
@@ -2480,7 +2498,7 @@ def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
         "metar": metar,
         "tropical": _tropical_rules(conn, station, day, zone, metar),
         "running_high_c": _settled_high(metar),
-        "taf": _taf(conn, station, day),
+        "taf": _taf(conn, station, day, taf_inbox),
         "precip": _precip(conn, station, day),
         "precip_sat": _precip_sat(station, day, zone),
         "precip_5min": _precip_5min(station, day, zone),

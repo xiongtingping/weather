@@ -24752,12 +24752,16 @@ function sdWrfHourChart(d, word, loc){
 // TAF and METAR as one card among the read-only evidence (user 2026-11-02 「把taf、metar作为一个卡片，放到”旁证“
 // 板块里去」), the whole width of the row: the newest report and TAF up top, the two lists folded under it.
 function sdTafMetar(day){
-  const p0 = (day.stages || {})["P0"] || {}, p1 = (day.stages || {})["P1"], tw = p0.taf_witness;
-  // Charter 283: P0-M and its TAF likelihood are retired; the TAF here is the one P0's envelope witnessed.
-  const taf = sdEvidenceCard("TAF · P0 见到的 TAF", SD_COL.P0,
-    `${tw ? `<b class="sd-evidence-primary">TX ${tw.tx_c == null ? "—" : sdN(tw.tx_c,2)+"°C"}</b><b>TAF 云量 ${sdPc(tw.cloud_cover_fraction,0)} <span class="sd-sub">（未分高度）</span></b><b>降水概率 ${sdPc(tw.precipitation_probability,0)}</b>` : "<b>无记录</b>"}`,
-    `<div>${tw ? `<b>P0 见证</b> · 签发 ${sdLocal(tw.issued_at_utc,true)} · 风 ${sdN(tw.wind_speed_mps,1)} m/s` : "P0 回执没有 TAF 见证记录"}</div>
-    ${tw ? sdTafCloudDetails(tw) : ""}`, true);
+  const p1 = (day.stages || {})["P1"];
+  // The day's own TAF TX, not the one a P0 receipt witnessed: every TAF for this day by availability, the
+  // newest TX leading, the first and each change beside it.
+  const caps = (day.taf || {}).captures || [], txs = caps.filter(c => c.tx_c != null);
+  const last = txs[txs.length - 1], first = txs[0];
+  const tafRows = caps.slice().reverse().map(c => `<div class="mono">${sdEsc(sdLocal(c.issued_at_utc, true))} ${sdEsc(c.kind || "TAF")} · ${c.tx_c == null ? "不带这一天的 TX" : `TX <b>${sdN(c.tx_c, 0)}°C</b>`}</div>`).join("");
+  const taf = sdEvidenceCard("TAF TX · 这一天的最高温预报", SD_COL.TX,
+    last ? `<b class="sd-evidence-primary">TX ${sdN(last.tx_c, 0)}°C</b><b>最新 ${sdEsc(sdLocal(last.issued_at_utc, true))} 签发</b>${first !== last ? `<b>首次 ${sdN(first.tx_c, 0)}°C（${sdEsc(sdLocal(first.issued_at_utc, true))}）</b>` : ""}`
+      : `<b>${caps.length ? "这一天的 TAF 还没带 TX" : "这一天还没有 TAF"}</b>`,
+    caps.length ? `<details><summary>这一天的 ${caps.length} 份 TAF（新的在上）</summary>${tafRows}</details>` : "", true);
   const F = (p1 || {}).features || {};
   const p1Line = sdEvidenceCard("P1（正式观测）", SD_COL.P1,
     p1 ? `<b class="sd-evidence-primary">已报最高 ${sdN(p1.running_high_c,2)}°C</b><b>再升概率 ${sdPc(p1.rise_probability)}</b><b>云量 ${sdPc(F.cloud_cover_fraction,0)}</b>` : "<b>尚未生成</b>",
@@ -24765,11 +24769,10 @@ function sdTafMetar(day){
       p1.alpha != null ? ` · α ${sdN(p1.alpha, 2)}` : ""}${p1.lambda != null ? ` · λ ${sdN(p1.lambda, 2)}` : ""} ·
       降水 ${F.precipitation_present == null ? "—" : F.precipitation_present ? "有" : "无"} · 风 ${sdN(F.wind_speed_mps, 1)} m/s · 露点差 ${sdN(F.dewpoint_depression_c, 2)}°C · 剩余 ${sdN(F.remaining_hours, 1)} h · 区域模型余量 ${sdSg(F.regional_headroom_c, 2)}°C${
       (p1.excluded || []).length ? ` · 排除 ${sdEsc(p1.excluded.join("、"))}` : ""}` : "等待 P1 概率信封");
-  const met = sdMetarTable(day), M = (day.metar || []).slice(-1)[0], T = ((SD.data || {}).taf_raw || [])[0];
-  if(!met && !T && !tw) return "";
-  const tx = ((T || {}).groups || {}).tx;
+  const met = sdMetarTable(day), M = (day.metar || []).slice(-1)[0];
+  if(!met && !caps.length && !((SD.data || {}).taf_raw || []).length) return "";
   const main = `${M ? `<b class="sd-mc-v" style="font-size:24px">${M.temp_c == null ? "—" : sdN(M.temp_c, 0) + "°C"}</b><span class="sd-mc-mode">最新报文 <b>${sdEsc(M.local || "")}</b>${day.running_high_c != null ? ` · 已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : ""}</span>` : `<span class="muted">这一天还没有报文</span>`}`
-    + (T ? `<span class="sd-mc-mode">最新 TAF <b>${sdEsc(sdLocal(T.issued_at_utc, true))}</b>${tx ? ` · TX <b>${sdEsc(tx.c)}°</b> ${sdEsc(sdLocal(tx.at_utc))}` : ""}</span>` : "");
+    + (last ? `<span class="sd-mc-mode">TAF TX <b>${sdN(last.tx_c, 0)}°C</b>（${sdEsc(sdLocal(last.issued_at_utc, true))} 签发）</span>` : "");
   return `<div class="sd-evidence-card sd-det-card sd-mc sd-wide" style="--c:${SD_COL.P0}"><div class="sd-mc-h"><span class="sd-mc-t">TAF · METAR</span><span class="sd-mc-tag">官方报文 · 结算口径</span></div>
     <div class="sd-mc-main">${main}</div>
     ${sdTafRaw(SD.data || {}, taf)}
@@ -24790,7 +24793,7 @@ function sdEvidence(day){
   // Its own card, right of the radiation card (user 2026-10-10 「放在辐射偏移（宪章 222
   // 卡片右边，单独一个卡片。而不是放在一起」).
   const dir = sdDirection(day.direction, R);
-  const dirCard = sdEvidenceCard("方向（宪章 266 · 相对市场众数）" + (day.direction ? sdDirFresh(day.direction) : ""), dir.color, dir.main, dir.body);
+  const dirCard = sdEvidenceCard("模型动量M" + (day.direction ? sdDirFresh(day.direction) : ""), dir.color, dir.main, dir.body);
   const P = day.precip;
   const O = sdRainObs(day);
   const fiveMin = O.madis ? `<b class="${O.madis.latest.wet ? "down" : "up"}" title="NOAA MADIS 5 分钟；本小时累计＝上一份整点报文之后的降水">5 分钟 ${sdEsc(O.madis.latest.local)} ${O.madis.latest.wet ? sdEsc(O.madis.latest.wx) : "无降水"}${O.madis.latest.accum_mm != null ? ` · 本小时累计 ${sdN(O.madis.latest.accum_mm, 2)} mm` : ""}</b>`
@@ -26673,9 +26676,12 @@ document.getElementById("app").innerHTML =
   // reads "D+1 10-18", so the text "明日" never matched and the entry did
   // nothing (user 2026-10-17 「点击导航栏的“明日”，无法切换至“明日”视角」).
   // 曲线汇总 lands on the comparison chart (user 2026-10-18「曲线汇总加到导航栏」).
-  const SD_PARTS = [["今日", "tab", "today"], ["明日", "tab", "ahead"], ["曲线汇总", ".sd-t", "曲线汇总"],
-    ["证据", ".sd-t", "证据："], ["逐小时实况对预报", "summary", "逐小时实况对预报", "hot"], ["WRF", "summary", "WRF 最高温预报"], ["TAF", "summary", "最新 TAF"],
-    ["METAR", "summary", "METAR/SPECI"], ["篮子计算器", ".sd-t", "篮子计算器"]];
+  // In page order (user 2026-11-02 「导航栏也要改下顺序」): TAF and METAR sit in 旁证 at the top.
+  const SD_PARTS = [["今日", "tab", "today"], ["明日", "tab", "ahead"], ["TAF", "summary", "最新 TAF"],
+    ["METAR", "summary", "METAR/SPECI"], ["曲线汇总", ".sd-t", "曲线汇总"], ["概率分布", ".sd-t", "概率分布（温度竖排"],
+    ["逐桶概率", ".sd-t", "逐桶概率"], ["模型 run 与权重", ".sd-t", "模型 run 与权重"], ["证据", ".sd-t", "证据："],
+    ["模型动量M", ".sd-evidence-title", "模型动量M"], ["逐小时实况对预报", "summary", "逐小时实况对预报", "hot"],
+    ["WRF", "summary", "WRF 最高温预报"], ["篮子计算器", ".sd-t", "篮子计算器"]];
   // "hot" entries stand out (user 2026-10-15「逐小时云与辐射：实况对预报：改为
   // 逐小时实况对预报，导航栏也突出！」).
   const SD_PARTS_HTML = `<span class="jump-sub">${SD_PARTS.map(([label, sel, text, hot]) =>
