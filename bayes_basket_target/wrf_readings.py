@@ -375,6 +375,23 @@ def _ig_series(rec: dict[str, Any]) -> list[list[Any]]:
     return [[f"{rec['day']}T{hh}:00:00Z", round(sum(float(h[hh]) for h in per) / len(per), 2)] for hh in hours]
 
 
+def _ig_view(rec: dict[str, Any]) -> dict[str, Any]:
+    """An IFS+GDPS record's view, its maximum the highest hour of the members' hourly mean -- the peak of
+    the curve the board draws (user 2026-11-02 「曲线是上20.3,数据不一致」; the record's own field is the
+    mean of the members' maxima, which peak at different hours), when every member covers 01..12Z."""
+
+    v = _nowcast_view(rec)
+    for arm in ("sat", "ctl"):
+        per = [((m or {}).get("hourly") or {}) for m in (rec.get(f"wrf_{arm}_members") or {}).values()]
+        full = bool(per) and all(all(f"{h:02d}" in m for h in range(1, 13)) for m in per)
+        hours = sorted(set.intersection(*(set(m) for m in per))) if full else []
+        top = max(sum(float(m[hh]) for m in per) / len(per) for hh in hours) if hours else None
+        v[f"{arm}_c"] = None if top is None else round(top, 2)
+        obs = rec.get("metar_max_so_far_c")
+        v[f"{arm}_obs_c"] = None if top is None else round(max(top, -99 if obs is None else float(obs)), 2)
+    return v
+
+
 def _obs_series(station: str, day: str, zone: ZoneInfo, path: Path = ARCHIVE_DB) -> list[list[Any]]:
     """The station's reported temperatures over its local day, from the observation archive
     (read only; empty when it cannot be read)."""
@@ -654,7 +671,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 continue
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
             entry["nowcast_ig_updates"] = [
-                {**_nowcast_view(r), "source_cycle_utc": r.get("source_cycle_utc"),
+                {**_ig_view(r), "source_cycle_utc": r.get("source_cycle_utc"),
                  "members_sat_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_sat_members") or {}).items()},
                  "members_ctl_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_ctl_members") or {}).items()},
                  "series": _ig_series(r)}
@@ -664,7 +681,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             ig = _as_of(recs, at)
             if t is None or ig is None:
                 continue
-            v = _nowcast_view(ig)
+            v = _ig_view(ig)
             for k in ("sat_obs_c", "ctl_obs_c", "market_mean_c", "belief_mean_c"):
                 if v[k] is not None:
                     ig_errs.setdefault(k, []).append(float(v[k]) - t)

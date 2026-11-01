@@ -19052,7 +19052,7 @@ function wrfTmaxPanel(){
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
       <div class="mono" style="font-size:26px;font-weight:700;line-height:1.2">${n(v)}°C</div>
       <div class="muted mono">${sub}${L.truth_c != null && v != null ? ` · <span class="${errCls(v - L.truth_c)}">${sg(v - L.truth_c)}</span>` : ""}</div>
-      <div class="muted mono" style="font-size:11.5px">累计平均误差 ${x && x.n ? n(x.mae_c, 2) + "°" : "—"} · 偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · ${x ? x.n : 0} 天</div></div>`;
+      <div class="muted mono" style="font-size:11.5px">累计平均误差 ${x && x.n ? n(x.mae_c, 1) + "°" : "—"} · 偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · ${x ? x.n : 0} 天</div></div>`;
     const ncRow = !NC ? "" : `<div class="trend-t" style="margin-top:8px" title="每天成都约 11:10 起跑；四个数都是同一时刻给出的今天最高温；WRF 两个数已与当时报文最高取大">今天上午 ${h(loc(NC.ready_utc))} 四方预报的最高温（此刻机场已报最高 ${n(NC.metar_max_so_far_c, 0)}°C）</div>
       <div class="grid g4">
       ${ncCard("WRF · 用卫星实测云", NC.sat_obs_c, `云取自 ${satLocal} 卫星`, "WRF 计算的最高温；算的时候告诉它卫星实际拍到的云（云量、厚度），之后沿用最新一张", NS.sat_obs_c)}
@@ -19064,7 +19064,7 @@ function wrfTmaxPanel(){
     // forward test's two arms, the hindcast upper bound (all-day measured cloud), the
     // hindcast with model-estimated cloud and raw GFS; every other configuration folds away.
     const tile = (name, x, c, note) => `<div class="card" style="border-top:3px solid ${c}" title="${h(x && x.n ? `偏差 ${sg(x.bias_c, 2)}°C · 差不到 0.5° ${Math.round(100 * x.hit)}%` : "")}"><div class="muted">${h(name)}</div>
-      <div class="mono" style="font-size:24px;font-weight:700">${x && x.n ? n(x.mae_c, 2) + "°" : "—"}</div>
+      <div class="mono" style="font-size:24px;font-weight:700">${x && x.n ? n(x.mae_c, 1) + "°" : "—"}</div>
       <div class="muted">${note || (x && x.n ? `平均误差 · ${x.n} 天` : "还没有结果")}</div></div>`;
     const fwd = sc.nowcast_sat || {}, KEY = ["nowcast_sat", "nowcast_ctl", "satcld_rhc85", "indep_rhc85"];
     const keyTiles = [
@@ -19167,7 +19167,7 @@ function wrfTmaxPanel(){
     const errOf = (E, c) => { const v = c[3](E); return v == null || E.truth_c == null ? null : v - E.truth_c; };
     const meanErr = c => { const e = tdays.map(d => errOf(S.days[d], c)).filter(x => x != null); return e.length ? [e.reduce((a, x) => a + Math.abs(x), 0) / e.length, e.length] : null; };
     const chip = e => e == null ? "" : `<span class="mono" style="font-size:11px;padding:0 4px;border-radius:4px;margin-left:4px;background:${Math.abs(e) < 0.5 ? "rgba(63,185,80,.18)" : Math.abs(e) >= 1.5 ? "rgba(248,81,73,.16)" : "rgba(210,153,34,.16)"}">${sg(e)}</span>`;
-    const head2 = COLS.map(c => { const m = meanErr(c); return `<th style="text-align:right;white-space:nowrap"><div style="color:${c[2]}">${h(c[1])}</div><div class="mono" style="font-size:18px;font-weight:700">${m ? n(m[0], 2) + "°" : "—"}</div><div class="muted" style="font-size:10.5px;font-weight:400">平均误差 · ${m ? m[1] : 0} 天</div></th>`; }).join("");
+    const head2 = COLS.map(c => { const m = meanErr(c); return `<th style="text-align:right;white-space:nowrap"><div style="color:${c[2]}">${h(c[1])}</div><div class="mono" style="font-size:18px;font-weight:700">${m ? n(m[0], 1) + "°" : "—"}</div><div class="muted" style="font-size:10.5px;font-weight:400">平均误差 · ${m ? m[1] : 0} 天</div></th>`; }).join("");
     const body2 = tdays.map(d => { const E = S.days[d];
       const errs = COLS.map(c => errOf(E, c)), best = Math.min(...errs.filter(x => x != null).map(Math.abs));
       return `<tr><td class="mono">${h(d.slice(5))}</td><td class="mono" style="font-weight:700">${E.truth_c == null ? "—" : n(E.truth_c, 0)}</td>${COLS.map((c, i) => { const v = c[3](E);
@@ -19193,12 +19193,12 @@ function wrfTmaxPanel(){
     // The IFS+GDPS route (user 2026-11-01 「另立一路」): its versions on the same clock.
     const igIssues = (L.nowcast_ig_updates || []).filter(r => r && r.ready_utc && r.sat_c != null)
       .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
-    const igTip = r => `IFS+GDPS · ${r.source_cycle_utc ? `${String(r.source_cycle_utc).slice(5, 10)} ${String(r.source_cycle_utc).slice(11, 13)}Z 三日预报接 00Z` : ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · 两成员均值 ${n(r.sat_c, 2)}°C${r.members_sat_c ? `（IFS ${n(r.members_sat_c.ifs, 2)} · GDPS ${n(r.members_sat_c.gdps, 2)}）` : ""}`;
+    const igTip = r => `IFS+GDPS · ${r.source_cycle_utc ? `${String(r.source_cycle_utc).slice(5, 10)} ${String(r.source_cycle_utc).slice(11, 13)}Z 三日预报接 00Z` : ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · 两成员均值 ${n(r.sat_c, 1)}°C${r.members_sat_c ? `（IFS ${n(r.members_sat_c.ifs, 1)} · GDPS ${n(r.members_sat_c.gdps, 1)}）` : ""}`;
     const issueLines = !issues.length && !igIssues.length ? [] : [
       ...(!igIssues.length ? [] : [{pts: igIssues.map(r => [r.ready_utc, r.sat_c]), stroke: "#e36209", width: 2, label: "IFS+GDPS 各版",
        marks: igIssues.map(r => [r.ready_utc, r.sat_c, igTip(r)])}]),
       {pts: issues.map(r => [r.ready_utc, r.sat_c]), stroke: "#0e9f6e", width: 2, label: "GFS 各版",
-       marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${n(r.sat_c, 2)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${n(r.sat_obs_c, 2)}°C` : ""}`])},
+       marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${n(r.sat_c, 1)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${n(r.sat_obs_c, 1)}°C` : ""}`])},
       {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: "#6e7781", dash: true, label: "已报最高"},
       {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: "#f778ba", width: 1, label: "市场均值"},
       ...(L.truth_c == null || !issues.length ? [] : [{pts: [[issues[0].ready_utc, L.truth_c], [issues[issues.length - 1].ready_utc, L.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
@@ -19214,9 +19214,9 @@ function wrfTmaxPanel(){
       return e != null && Math.abs(e) === Math.min(...RANK.map(k => errOf(E, k)).filter(x => x != null).map(Math.abs)); }).length;
     const ranked = RANK.map(c => [c, meanErr(c), wins(c)]).filter(x => x[1]).sort((a, b) => a[1][0] - b[1][0]);
     // One muted line (user 2026-10-31 「突出预报，弱化谁更准」): the ranking no longer leads.
-    const rankStrip = !ranked.length ? "" : `<div class="muted" style="font-size:12px;margin-top:8px" title="同一时刻（11:30 出数）各家报的最高温对实测的平均误差；10-01 起没有实盘出数的日子用严格回放（只用 11:10 前数据）；括号＝天数 · 当天最准次数">11:30 时刻平均误差：${ranked.map(([c, m, w]) => `<span style="white-space:nowrap"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${c[2]};margin-right:4px"></i>${h(c[1])} <span class="mono">${n(m[0], 2)}°</span>（${m[1]} 天 · ${w} 次）</span>`).join(" · ")}</div>`;
+    const rankStrip = !ranked.length ? "" : `<div class="muted" style="font-size:12px;margin-top:8px" title="同一时刻（11:30 出数）各家报的最高温对实测的平均误差；10-01 起没有实盘出数的日子用严格回放（只用 11:10 前数据）；括号＝天数 · 当天最准次数">11:30 时刻平均误差：${ranked.map(([c, m, w]) => `<span style="white-space:nowrap"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${c[2]};margin-right:4px"></i>${h(c[1])} <span class="mono">${n(m[0], 1)}°</span>（${m[1]} 天 · ${w} 次）</span>`).join(" · ")}</div>`;
     const IGS = S.nowcast_ig_scores || {}, igN = (IGS.sat_obs_c || {}).n || 0;
-    const igStrip = !igN ? "" : `<div class="muted" style="font-size:12px;margin-top:4px" title="两路各取当地 12:00 前最新一版（已与机场已报最高取大）对实测；IFS+GDPS 一路 11-01 起前向，GFS 一路含冻结版与重跑">临近预报两路（12:00 时刻，${igN} 天）：IFS+GDPS 平均误差 <span class="mono">${n(IGS.sat_obs_c.mae_c, 2)}°</span>（偏差 ${sg(IGS.sat_obs_c.bias_c, 2)}）${(IGS.gfs_sat_obs_c || {}).n ? ` · GFS <span class="mono">${n(IGS.gfs_sat_obs_c.mae_c, 2)}°</span>（偏差 ${sg(IGS.gfs_sat_obs_c.bias_c, 2)}，${IGS.gfs_sat_obs_c.n} 天）` : ""}</div>`;
+    const igStrip = !igN ? "" : `<div class="muted" style="font-size:12px;margin-top:4px" title="两路各取当地 12:00 前最新一版（已与机场已报最高取大）对实测；IFS+GDPS 一路 11-01 起前向，GFS 一路含冻结版与重跑">临近预报两路（12:00 时刻，${igN} 天）：IFS+GDPS 平均误差 <span class="mono">${n(IGS.sat_obs_c.mae_c, 1)}°</span>（偏差 ${sg(IGS.sat_obs_c.bias_c, 2)}）${(IGS.gfs_sat_obs_c || {}).n ? ` · GFS <span class="mono">${n(IGS.gfs_sat_obs_c.mae_c, 1)}°</span>（偏差 ${sg(IGS.gfs_sat_obs_c.bias_c, 2)}，${IGS.gfs_sat_obs_c.n} 天）` : ""}</div>`;
     const recent = judged.slice(0, 7);
     const recentTable = !recent.length ? "" : `<div class="trend-t" style="margin-top:10px">最近 ${recent.length} 天 · 实测与各家（粗框＝当天最准）</div>
       <div class="card" style="overflow-x:auto"><table style="width:100%"><thead><tr><th>日期</th><th>实测</th>${RANK.map(c => `<th style="text-align:right;color:${c[2]}">${h(c[1])}</th>`).join("")}</tr></thead><tbody>${recent.map(d => { const E = S.days[d];
@@ -19294,11 +19294,11 @@ function wrfTmaxPanel(){
         const span = (q.b - q.a + 1) * sw, txt = span >= 70 ? q.grp : q.grp.replace(/（.*）/, "");
         g += `<text x="${(X(q.a) + X(q.b)) / 2}" y="${Hh - pb + 27}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${h(txt)}</text>`; });
       bfUps.forEach((u, i) => { const prev = bfUps[i - 1];
-        g += `<g><title>${h(`${u.label} · ${KWORD.bf} · 报今天最高 ${n(u.v, 2)}°C${prev ? ` · 比上一次补跑 ${sg(u.v - prev.v, 2)}` : ""}`)}</title>
+        g += `<g><title>${h(`${u.label} · ${KWORD.bf} · 报今天最高 ${n(u.v, 1)}°C${prev ? ` · 比上一次补跑 ${sg(u.v - prev.v, 2)}` : ""}`)}</title>
           <rect x="${X(si(u)) - 3.2}" y="${Y(u.v) - 3.2}" width="6.4" height="6.4" fill="var(--bg,#fff)" stroke="${KCOL.bf}" stroke-width="1.6" stroke-dasharray="2 1.5"/>
           <text x="${X(si(u))}" y="${Y(u.v) + 15}" text-anchor="middle" font-size="9.5" fill="${KCOL.bf}">${n(u.v)}</text></g>`; });
       ups.forEach((u, i) => { const last1 = i === ups.length - 1;
-        g += `<g><title>${h(`${u.label} · ${KWORD[u.kind]} · 报今天最高 ${n(u.v, 2)}°C${prevOf(u) ? ` · 比${prevOf(u).kind === u.kind ? "本路" : ""}上一次 ${sg(u.v - prevOf(u).v, 2)}` : ""}`)}</title>
+        g += `<g><title>${h(`${u.label} · ${KWORD[u.kind]} · 报今天最高 ${n(u.v, 1)}°C${prevOf(u) ? ` · 比${prevOf(u).kind === u.kind ? "本路" : ""}上一次 ${sg(u.v - prevOf(u).v, 2)}` : ""}`)}</title>
           <circle cx="${X(si(u))}" cy="${Y(u.v)}" r="${last1 ? 5 : 3.6}" fill="${last1 ? KCOL[u.kind] : "var(--bg,#fff)"}" stroke="${KCOL[u.kind]}" stroke-width="2"/>
           <text x="${X(si(u))}" y="${Y(u.v) - 8}" text-anchor="middle" font-size="${last1 ? 12 : 10.5}" font-weight="${last1 ? 700 : 400}" fill="var(--text)">${n(u.v)}</text></g>`; });
       return `<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天最高温的逐次预报">${g}</svg>
@@ -19340,7 +19340,7 @@ function wrfTmaxPanel(){
       P.forEach(({k, xy}) => {
         g += `<polyline fill="none" stroke="${KCOL[k]}" stroke-width="2.4" points="${xy.map(z => `${X(z[0]).toFixed(1)},${Y(z[1]).toFixed(1)}`).join(" ")}"/>`;
         xy.forEach((z, i) => { const last1 = i === xy.length - 1, r = z[2];
-          g += `<circle cx="${X(z[0])}" cy="${Y(z[1])}" r="${last1 ? 4.6 : 3.2}" fill="${last1 ? KCOL[k] : "var(--bg,#fff)"}" stroke="${KCOL[k]}" stroke-width="2"><title>${h(`${KWORD[k]} · ${loc(r.ready_utc)} 出数 · 云图 ${r.last_scan_utc ? loc(`${today}T${r.last_scan_utc}:00Z`) : "—"} · 预测今天最高 ${n(z[1], 2)}°C${i ? ` · 比本路上一版 ${sg(z[1] - xy[i - 1][1], 2)}` : ""}`)}</title></circle>`; });
+          g += `<circle cx="${X(z[0])}" cy="${Y(z[1])}" r="${last1 ? 4.6 : 3.2}" fill="${last1 ? KCOL[k] : "var(--bg,#fff)"}" stroke="${KCOL[k]}" stroke-width="2"><title>${h(`${KWORD[k]} · ${loc(r.ready_utc)} 出数 · 云图 ${r.last_scan_utc ? loc(`${today}T${r.last_scan_utc}:00Z`) : "—"} · 预测今天最高 ${n(z[1], 1)}°C${i ? ` · 比本路上一版 ${sg(z[1] - xy[i - 1][1], 2)}` : ""}`)}</title></circle>`; });
         ends.push({y: Y(xy[xy.length - 1][1]), c: KCOL[k], t: `${k === "nowcast" ? "GFS" : "IFS+GDPS"} ${n(xy[xy.length - 1][1])}°`});
       });
       ends.sort((a, b) => a.y - b.y).forEach((e, i, a) => { if(i && e.y - a[i - 1].y < 13) e.y = a[i - 1].y + 13;
@@ -19370,7 +19370,6 @@ function wrfTmaxPanel(){
       const gfsSer = gfsNew ? TD.nowcast_update_run.series : ((TD.configs || {}).nowcast_sat || {}).series, igLast = tIg[tIg.length - 1];
       const gfsLast = (TD.nowcast_updates || []).concat(TD.nowcast ? [TD.nowcast] : []).sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc))).pop();
       const lines = [
-        ...tIg.slice(0, -1).filter(r => (r.series || []).length).map(r => ({pts: r.series, c: KCOL.nowcast_ig, w: 1, op: 0.3, name: `临近预报·IFS+GDPS ${loc(r.ready_utc)} 版`, old: true})),
         ...(gfsSer && gfsSer.length ? [{pts: gfsSer, c: KCOL.nowcast, w: 2.4, name: `临近预报·GFS 最新一版${gfsLast ? `（${loc(gfsLast.ready_utc)}）` : ""}`, peak: true}] : []),
         ...(igLast && (igLast.series || []).length ? [{pts: igLast.series, c: KCOL.nowcast_ig, w: 2.4, name: `临近预报·IFS+GDPS 最新一版（${loc(igLast.ready_utc)}）`, peak: true}] : []),
       ];
@@ -19384,7 +19383,7 @@ function wrfTmaxPanel(){
       const vs = L2.flatMap(l => l.xy.map(p => p[1])).concat(O.map(p => p[1]), TD.truth_c == null ? [] : [TD.truth_c]);
       if(!vs.length) return "";
       const W = 760, Hh = 230, pl = 34, pr = 12, pt = 16, pb = 26;
-      const lo = Math.floor(Math.min(...vs) - 0.5), hi = Math.ceil(Math.max(...vs) + 0.8), stp = hi - lo > 10 ? 2 : 1;
+      const lo = Math.floor(Math.min(...vs) - 0.5), hi = Math.ceil(Math.max(...vs) + 0.8), stp = hi - lo > 10 ? 1 : 0.5;
       const X = x => pl + x * (W - pl - pr) / 24, Y = v => pt + (hi - v) * (Hh - pt - pb) / (hi - lo);
       let g = "";
       for(let v = Math.ceil(lo / stp) * stp; v <= hi; v += stp) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}°</text>`;
@@ -19392,7 +19391,7 @@ function wrfTmaxPanel(){
       const nowX = hr(Date.now());
       if(nowX > 0 && nowX < 24) g += `<line x1="${X(nowX)}" x2="${X(nowX)}" y1="${pt}" y2="${Hh - pb}" stroke="var(--muted)" stroke-dasharray="2 3"/><text x="${X(nowX) + 3}" y="${pt + 9}" font-size="10" fill="var(--muted)">现在</text>`;
       if(TD.truth_c != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(TD.truth_c)}" y2="${Y(TD.truth_c)}" stroke="var(--text)" stroke-dasharray="5 3"/><text x="${W - pr}" y="${Y(TD.truth_c) - 4}" text-anchor="end" font-size="10.5" fill="var(--text)">实测最高 ${n(TD.truth_c, 0)}°</text>`;
-      L2.forEach(l => { g += `<polyline fill="none" stroke="${l.c}" stroke-width="${l.w}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""}${l.op ? ` opacity="${l.op}"` : ""} points="${l.xy.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"><title>${h(l.name)}</title></polyline>`; });
+      L2.forEach(l => { g += `<polyline fill="none" stroke="${l.c}" stroke-width="${l.w}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""} points="${l.xy.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"><title>${h(l.name)}</title></polyline>`; });
       // each main curve's peak, its value above it; labels that would touch stack downward
       const placed = [];
       L2.filter(l => l.peak).map(l => ({l, p: l.xy.reduce((a, b) => b[1] > a[1] ? b : a)})).sort((a, b) => b.p[1] - a.p[1]).forEach(({l, p}) => {
@@ -19400,22 +19399,20 @@ function wrfTmaxPanel(){
         placed.filter(o => Math.abs(o.x - X(p[0])) < 44).forEach(o => { if(Math.abs(o.ly - ly) < 12) ly = o.ly + 12; });
         placed.push({x: X(p[0]), ly});
         const hh = Math.floor(p[0]), mm = Math.round((p[0] - hh) * 60);
-        g += `<g><title>${h(`${l.name} · ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} 最高 ${n(p[1], 2)}°C`)}</title><circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.2" fill="${l.c}"/><text x="${X(p[0])}" y="${ly}" text-anchor="middle" font-size="11" font-weight="700" fill="${l.c}" stroke="var(--card,#fff)" stroke-width="3" paint-order="stroke">${n(p[1])}</text></g>`; });
+        g += `<g><title>${h(`${l.name} · ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} 最高 ${n(p[1], 1)}°C`)}</title><circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.2" fill="${l.c}"/><text x="${X(p[0])}" y="${ly}" text-anchor="middle" font-size="11" font-weight="700" fill="${l.c}" stroke="var(--card,#fff)" stroke-width="3" paint-order="stroke">${n(p[1])}</text></g>`; });
       // reports joined only across gaps of at most two hours (a missing night is not drawn as a line)
       const segs = O.reduce((a, p, i) => { if(!i || p[0] - O[i - 1][0] > 2) a.push([]); a[a.length - 1].push(p); return a; }, []);
       segs.filter(sg => sg.length > 1).forEach(sg => { g += `<polyline fill="none" stroke="var(--text)" stroke-width="1.4" points="${sg.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"/>`; });
       O.forEach(p => { const hh = Math.floor(p[0]), mm = Math.round((p[0] - hh) * 60);
         g += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3" fill="var(--text)"><title>${h(`机场报文 ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} · ${n(p[1], 0)}°C`)}</title></circle>`; });
       const obsMax = O.length ? Math.max(...O.map(p => p[1])) : null;
-      const nOld = L2.filter(l => l.old).length;
-      const key = L2.filter(l => !l.old).map(l => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:${Math.max(2, Math.round(l.w))}px ${l.dash ? "dashed" : "solid"} ${l.c};display:inline-block"></i>${h(l.name)}</span>`).join("")
-        + (nOld ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:1px solid ${KCOL.nowcast_ig};opacity:.4;display:inline-block"></i>IFS+GDPS 较早各版（${nOld}）</span>` : "")
+      const key = L2.map(l => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:${Math.max(2, Math.round(l.w))}px ${l.dash ? "dashed" : "solid"} ${l.c};display:inline-block"></i>${h(l.name)}</span>`).join("")
         + (O.length ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--text);display:inline-block"></i>机场报文（至今最高 ${n(obsMax, 0)}°）</span>` : "");
       if(!L2.length && O.length < 2) return "";
       // The shared time-chart hover (sdTTHover), on local hours: each newest curve interpolated between its
       // hours and blank outside them, each report standing for at most 1.5 h (user 2026-11-01 「鼠标悬停查看当前时间轴各条曲线」).
       const ttD = {t0: 0, t1: 24, W, H: Hh, L: pl, R: pr, T: pt, B: pb, i: 1, u: "h",
-        s: L2.filter(l => !l.old).map(l => ({n: l.name, c: l.c, p: l.xy.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 100) / 100])}))
+        s: L2.map(l => ({n: l.name, c: l.c, dg: 1, p: l.xy.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 100) / 100])}))
           .concat(O.length ? [{n: "机场实测", c: "var(--text)", hold: 1.5, dg: 0, p: O.map(q => [Math.round(q[0] * 1000) / 1000, q[1]])}] : [])};
       return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：彩色＝临近预报算的每小时气温，黑点＝机场实测${L2.length ? "" : " · 今天的临近预报还没出"}</div>
         <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天逐小时气温" data-tt="${sdEsc(JSON.stringify(ttD))}">${g}<line class="sd-tt-x" x1="0" x2="0" y1="${pt}" y2="${Hh - pb}" visibility="hidden"/></svg>
@@ -23721,7 +23718,7 @@ function sdBeliefOf(day){
 }
 function sdModelCard(o){
   const cmp = (o.cmp || []).filter(c => c && c[1] != null && isFinite(c[1])).map(([label, d, tip]) =>
-    `<span class="sd-mc-cmp ${d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}" title="${sdEsc(tip || "")}">${label} <b>${sdSg(d, 2)}°C</b></span>`).join("");
+    `<span class="sd-mc-cmp ${d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}" title="${sdEsc(tip || "")}">${label} <b>${sdSg(d, o.dg != null ? o.dg : 2)}°C</b></span>`).join("");
   const head = `<div class="sd-mc-h"><span class="sd-mc-t">${o.title}</span>${o.tag ? `<span class="sd-mc-tag">${o.tag}</span>` : ""}${o.fresh || ""}</div>${o.corner || ""}`;
   if(o.empty != null) return `<div class="sd-evidence-card sd-det-card sd-mc" style="--c:${o.color || "var(--muted)"}">${head}<div class="muted sd-sub" title="${sdEsc(o.emptyTip || "")}">${sdEsc(o.empty)}</div>${o.trend || ""}</div>`;
   return `<div class="sd-evidence-card sd-det-card sd-mc" style="--c:${o.color}">${head}`
@@ -23905,7 +23902,7 @@ function sdWrf(day){
     .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
   const issueLines = !issues.length ? [] : [
     {pts: issues.map(r => [r.ready_utc, r.sat_c]), stroke: SD_COL.WRF, width: 2, label: "WRF 各版",
-     marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${day.event_date}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${sdN(r.sat_c, 2)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${sdN(r.sat_obs_c, 2)}°C` : ""}`])},
+     marks: issues.map(r => [r.ready_utc, r.sat_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${day.event_date}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · WRF ${sdN(r.sat_c, 1)}°C${r.sat_obs_c != null && r.sat_obs_c !== r.sat_c ? ` · 与已报最高取大 ${sdN(r.sat_obs_c, 1)}°C` : ""}`])},
     {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: SD_COL.METAR, dash: true, label: "已报最高"},
     {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: SD_COL.MKT, width: 1, label: "市场均值"},
     ...(W.truth_c == null ? [] : [{pts: [[issues[0].ready_utc, W.truth_c], [issues[issues.length - 1].ready_utc, W.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
@@ -23920,13 +23917,13 @@ function sdWrf(day){
   const NS = W.nowcast_scores || {}, fs = NS.sat_obs_c, fc = NS.ctl_obs_c, O = W.oracle_score;
   const tip = `用卫星实测云的 WRF：GFS 前一天 18Z 驱动、9 km，当地约 11 点起跑；卫星云量与云厚（葵花）放进辐射，最新一张之后沿用；已与当时机场报文最高取大。`
     + `\n只读，不进任何层；前向测试满 15 个闭日后判定。`;
-  return sdModelCard({title, tag, color: SD_COL.WRF,
-    value: `${sdN(lead, 2)}°C`, valueTip: tip,
+  return sdModelCard({title, tag, color: SD_COL.WRF, dg: 1,
+    value: `${sdN(lead, 1)}°C`, valueTip: tip,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? lead - bel.mean : null, "WRF 减当前服务信念均值"], ["比市场", mk == null ? null : lead - mk, "WRF 减市场均值"]],
     sub: NC ? `用卫星实测云（${satAt}）· 当地 ${loc(NC.ready_utc)} 出数${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`
       : `3 日预报 · ${String(prev.init_utc || "").slice(5, 10)} ${String(prev.init_utc || "").slice(11, 13)}Z 起报${prev.change_c == null ? "" : ` · 比上一轮 ${sdSg(prev.change_c, 1)}°C`}${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`,
     body, trend,
-    foot: `前向平均误差：卫星云 ${fs && fs.n ? sdN(fs.mae_c, 2) : "—"} · 自估云 ${fc && fc.n ? sdN(fc.mae_c, 2) : "—"}°C（${fs ? fs.n : 0} 天）${O && O.n ? ` · 回算全天卫星云 ${sdN(O.mae_c, 2)}°C（${O.n} 天）` : ""}`});
+    foot: `前向平均误差：卫星云 ${fs && fs.n ? sdN(fs.mae_c, 1) : "—"} · 自估云 ${fc && fc.n ? sdN(fc.mae_c, 1) : "—"}°C（${fs ? fs.n : 0} 天）${O && O.n ? ` · 回算全天卫星云 ${sdN(O.mae_c, 1)}°C（${O.n} 天）` : ""}`});
 }
 // 观测更新型 MOS beside the other three estimates (user 2026-10-21 「把"观测更新型
 // MOS"上到这个看板，一排4个卡片。对比」): the station board's composite ΔT

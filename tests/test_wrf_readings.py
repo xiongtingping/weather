@@ -367,14 +367,18 @@ def test_backfill_runs_are_their_own_series_and_leave_the_live_forecast_alone(tm
 def test_ifs_gdps_nowcast_is_its_own_series_scored_with_the_gfs_route_at_noon(tmp_path: Path, monkeypatch) -> None:
     """The IFS+GDPS route (user 2026-11-01 「另立一路」): every version on the day with its source
     cycle and members; scored on the newest version out by 04:00Z, beside the GFS route's newest
-    (frozen issue or re-run) by the same moment -- later versions are shown, not scored."""
+    (frozen issue or re-run) by the same moment -- later versions are shown, not scored.  Its number is
+    the peak of the members' hourly mean, the curve drawn (user 2026-11-02 「曲线是上20.3,数据不一致」),
+    not the record's mean of the members' maxima (here a degree higher: they peak at 05Z and 08Z)."""
 
     import json  # noqa: PLC0415
 
     (tmp_path / "run" / "nowcast_ig").mkdir(parents=True)
     (tmp_path / "run" / "nowcast").mkdir(parents=True)
-    ig = [{"day": "2026-11-01", "station": "ZUUU", "kind": "ifs_gdps", "ready_utc": r, "wrf_sat_tmax_with_obs_c": s,
-           "source_cycle_utc": "2026-10-31T12:00:00Z", "wrf_sat_members": {"ifs": {"tmax_c": s + 1}, "gdps": {"tmax_c": s - 1}}}
+    hourly = lambda s, at: {f"{h:02d}": s + 1 if h == at else s - 1 for h in range(1, 13)}  # noqa: E731
+    ig = [{"day": "2026-11-01", "station": "ZUUU", "kind": "ifs_gdps", "ready_utc": r, "wrf_sat_tmax_with_obs_c": s + 1,
+           "source_cycle_utc": "2026-10-31T12:00:00Z",
+           "wrf_sat_members": {"ifs": {"tmax_c": s + 1, "hourly": hourly(s, 5)}, "gdps": {"tmax_c": s + 1, "hourly": hourly(s, 8)}}}
           for r, s in (("2026-11-01T02:20:00Z", 21.0), ("2026-11-01T03:50:00Z", 22.5), ("2026-11-01T05:00:00Z", 30.0))]
     (tmp_path / "run" / W.NOWCAST_IG_LOG).write_text("\n".join(json.dumps(r) for r in ig) + "\n", encoding="utf-8")
     gfs = [{"day": "2026-11-01", "station": "ZUUU", "kind": k, "ready_utc": r, "wrf_sat_tmax_with_obs_c": s}
@@ -386,7 +390,7 @@ def test_ifs_gdps_nowcast_is_its_own_series_scored_with_the_gfs_route_at_noon(tm
     S = out["stations"]["ZUUU"]
     E = S["days"]["2026-11-01"]
     assert [u["sat_obs_c"] for u in E["nowcast_ig_updates"]] == [21.0, 22.5, 30.0]
-    assert E["nowcast_ig_updates"][0]["members_sat_c"] == {"ifs": 22.0, "gdps": 20.0}
+    assert E["nowcast_ig_updates"][0]["members_sat_c"] == {"ifs": 22.0, "gdps": 22.0}
     assert E["nowcast_ig_updates"][0]["source_cycle_utc"] == "2026-10-31T12:00:00Z"
     sc = S["nowcast_ig_scores"]
     assert sc["sat_obs_c"]["bias_c"] == -0.5 and sc["gfs_sat_obs_c"]["bias_c"] == -3.0
