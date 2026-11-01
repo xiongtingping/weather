@@ -19263,9 +19263,6 @@ function wrfTmaxPanel(){
     // nowcast routes alternate, ~19.9 and ~20.4, and chained in time they read as a ±0.5 zigzag); a route's
     // first version against the update before it, whatever its kind.
     const prevOf = u => { const i = ups.indexOf(u), same = ups.slice(0, i).filter(x => x.kind === u.kind); return same.length ? same[same.length - 1] : i ? ups[i - 1] : null; };
-    const shownUps = ups.slice(-14);
-    const chips = shownUps.map((u, i) => { const prev = prevOf(u);
-      return `<span class="mono" style="white-space:nowrap;padding:2px 8px;border-radius:6px;border:1px solid ${KCOL[u.kind]}${i === shownUps.length - 1 ? ";font-weight:700" : ""}" title="${h(`${u.label} · ${KWORD[u.kind]} · ${n(u.v, 2)}°C`)}">${h(u.label)} <b>${n(u.v)}°</b>${arrow(prev ? u.v - prev.v : null)}</span>`; }).join("");
     // One slot per update (user 2026-10-31 「但是我点上去 数据不对啊」): the shared time chart's hover
     // carries every line's last value forward to the cursor and read the earlier run as the latest;
     // here each point is one update, its value written on it, its init (or issue) time below it.
@@ -19423,8 +19420,6 @@ function wrfTmaxPanel(){
       <div class="muted">今天 ${h(today.slice(5))} 周${wk(today)} · WRF 最高温预报</div>
       <div class="mono" style="font-size:46px;font-weight:800;line-height:1.1">${n(heroV)}°C${arrow(ups.length > 1 && prevOf(ups[ups.length - 1]) ? ups[ups.length - 1].v - prevOf(ups[ups.length - 1]).v : null, 22)}</div>
       <div class="muted mono">${heroSub}${TD.truth_c == null ? "" : ` · 实测 ${n(TD.truth_c, 0)}°C`}</div>
-      <div class="muted" style="margin-top:10px;font-size:12px" title="三日预报按起报时次排（起报后约 8 小时出数），临近预报按出数时间；箭头＝比同一路的上一次（两路临近预报各比各的）">每次更新 · ${ups.length} 次${ups.length > shownUps.length ? `（显示最近 ${shownUps.length} 次）` : ""} · ${["gfs", "fcst", "nowcast", "nowcast_ig"].filter(k => ups.some(u => u.kind === k)).map(k => `<span style="color:${KCOL[k]}">■</span> ${KWORD[k]}`).join("　")}${bfUps.length ? `　<span style="color:${KCOL.bf}">□</span> ${KWORD.bf}（${bfUps.length} 次，只在图上）` : ""}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:12.5px">${chips}</div>
       ${dayChart}${tmChart || slotUpChart ? `<details style="margin-top:10px"><summary class="muted" style="font-size:12px;cursor:pointer">每一版预测的“今天最高”（按出数时间）</summary><div style="margin-top:6px">${tmChart || slotUpChart}</div></details>` : ""}</div>`;
     // The forecast leads (user 2026-10-31 「突出预报，弱化谁更准」「预报突出今天（每次的更新）」): today
     // and its updates, today's nowcast cards and issue curve, then the coming days; who was nearest
