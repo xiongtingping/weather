@@ -762,7 +762,8 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
         return {"state": "no_run"}
     configs = E.get("configs") or {}
     keep = {c: {k: configs[c].get(k) for k in ("tmax_c", "at_local", "status", "series", "init_utc", "last_local",
-                                                "peak_covered", "prev_init_utc", "prev_tmax_c", "change_c")}
+                                                "peak_covered", "prev_init_utc", "prev_tmax_c", "change_c",
+                                                "members", "member_series")}
             for c in ("nowcast_sat", "nowcast_ctl", FORECAST) if c in configs}
     scores = S.get("scores") or {}
     # The card leads with the newest issue by ready time: a re-run on a newer scan (user
@@ -779,7 +780,11 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
             "nowcast_ig_updates": E.get("nowcast_ig_updates") or [],
             "fcst_history": E.get("fcst_history") or [],
             "nowcast_scores": S.get("nowcast_scores") or {},
-            "oracle_score": scores.get("satcld_rhc85"), "selfcloud_score": scores.get("indep_rhc85")}
+            "oracle_score": scores.get("satcld_rhc85"), "selfcloud_score": scores.get("indep_rhc85"),
+            # the station board's three-day block: the reports on the local day, both routes' and the
+            # three-day forecast's forward scores
+            "obs_series": E.get("obs_series") or [], "nowcast_ig_scores": S.get("nowcast_ig_scores") or {},
+            "fcst_score": scores.get(FORECAST)}
 
 
 def run(*, db: Path = board_readings.DEFAULT_DB) -> dict[str, Any]:
