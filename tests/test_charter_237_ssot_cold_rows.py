@@ -1306,13 +1306,13 @@ def test_a_batch_held_past_the_lock_target_halves_the_next(
     assert move["min_batch_rows"] == 2  # the next batch after a long hold: 4 -> 2
 
 
-def test_planning_takes_half_the_budget_and_the_rest_go_first_next_run(
+def test_planning_takes_half_the_budget_and_the_rest_wait(
     store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """2026-10-27: on a swapping host the plans alone took the whole 2,400 s
     (1.39 GiB planned, 0.01 GiB moved) and the store reached its ceiling.
     Past its planning share a run moves what it planned; the tables it did
-    not reach are planned first next run."""
+    not reach are left for the cost book to order next run."""
 
     first, second = off.POLICIES[0], off.POLICIES[1]
     planned: list[str] = []
@@ -1334,11 +1334,80 @@ def test_planning_takes_half_the_budget_and_the_rest_go_first_next_run(
     assert planned == [first.table] and moved == [first.table]
     states = {row["table"]: row["state"] for row in receipt["tables"]}
     assert states == {first.table: "planned", second.table: "not_planned_budget"}
-    planned.clear()
-    moved.clear()
-    _run(store, cold, tmp_path, apply=True, budget_seconds=100.0,
-         policies=(first, second), plan_first=[second.table])
-    assert planned == [second.table] and moved == [second.table]
+
+
+def _cost(seconds: float, remaining: int | None, at: str = "2026-11-01T10:00:00Z") -> dict:
+    return {"plan_seconds": seconds, "remaining_bytes": remaining, "measured_at_utc": at}
+
+
+def test_planning_goes_best_yield_per_second_first() -> None:
+    """2026-11-01 (user 「Reorder planning」): the 15:45 run planned the OOS
+    evaluation table first because the run before had not reached it; it read
+    for 18 minutes, was interrupted and spent the whole planning share, while
+    the WS snapshots (1.44 GiB for 110 s) were never planned."""
+
+    a, b, c, d, e = (off.POLICIES[i] for i in range(5))
+    now = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
+    costs = {
+        a.table: _cost(2710.0, 1_390_000_000),            # slow, big: 0.5 MB/s
+        b.table: _cost(110.0, 1_440_000_000),             # 13 MB/s
+        c.table: _cost(2.0, 0),                           # frees nothing
+        d.table: _cost(300.0, 900_000_000, "2026-10-30T00:00:00Z"),  # stale: measure again
+        # e: never measured
+    }
+    order = [p.table for p in off.plan_order((a, b, c, d, e), costs, now)]
+    assert order == [b.table, a.table, e.table, d.table, c.table]
+    assert off.plan_seconds_due(a.table, costs, now) == 2710.0
+    assert off.plan_seconds_due(d.table, costs, now) is None
+
+
+def test_a_table_too_slow_for_the_share_left_waits_for_cheaper_ones(
+    store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 10:26Z run spent 2,711 s planning one OOS table.  A table whose
+    fresh measured cost exceeds what is left of the share is passed over and
+    the cheaper tables after it are still planned."""
+
+    first, slow, cheap = off.POLICIES[0], off.POLICIES[1], off.POLICIES[2]
+    planned: list[str] = []
+
+    def plan(_conn, policy, **_kwargs):
+        planned.append(policy.table)
+        return off.TablePlan(policy=policy, cutoff="2026-01-01", candidates=[1], estimated_bytes=1)
+
+    def move(*, plan, **_kwargs):
+        return {"table": plan.policy.table, "state": "moved", "moved_rows": 1, "moved_bytes": 1}
+
+    monkeypatch.setattr(off, "plan_table", plan)
+    monkeypatch.setattr(off, "move_table", move)
+    monkeypatch.setattr(off, "_utc_now", lambda: datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc))
+    costs = {first.table: _cost(1.0, 10**9), slow.table: _cost(5000.0, 10**9), cheap.table: _cost(1.0, 10**5)}
+    receipt = _run(store, cold, tmp_path, apply=True, budget_seconds=100.0,
+                   policies=(first, slow, cheap), plan_costs=costs)
+    assert planned == [first.table, cheap.table]
+    states = {row["table"]: row["state"] for row in receipt["tables"]}
+    assert states[slow.table] == "not_planned_budget"
+
+
+def test_the_cost_book_keeps_what_each_plan_cost_and_left() -> None:
+    receipt = {
+        "generated_at_utc": "2026-11-01T12:00:00Z",
+        "tables": [
+            {"table": "t_done", "state": "planned", "plan_seconds": 60.0, "estimated_bytes": 500, "refused": []},
+            {"table": "t_none", "state": "nothing_to_move", "plan_seconds": 3.0, "estimated_bytes": 0, "refused": []},
+            {"table": "t_cut", "state": "refused", "plan_seconds": 1100.0, "estimated_bytes": 0,
+             "refused": ["plan_error:OperationalError:interrupted"]},
+            {"table": "t_skip", "state": "not_planned_budget", "plan_seconds": None, "estimated_bytes": None,
+             "refused": []},
+        ],
+        "moves": [{"table": "t_done", "moved_bytes": 200}],
+    }
+    old = {"t_cut": _cost(268.0, 350, "2026-11-01T03:00:00Z"), "t_skip": _cost(9.0, 7)}
+    book = off.updated_plan_costs(old, receipt)
+    assert book["t_done"] == _cost(60.0, 300, "2026-11-01T12:00:00Z")
+    assert book["t_none"] == _cost(3.0, 0, "2026-11-01T12:00:00Z")
+    assert book["t_cut"] == _cost(1100.0, 350, "2026-11-01T03:00:00Z")   # cost raised, still due
+    assert book["t_skip"] == _cost(9.0, 7)
 
 
 def test_the_moves_keep_their_share_however_long_planning_took(

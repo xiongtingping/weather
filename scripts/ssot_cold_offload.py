@@ -137,6 +137,7 @@ HOLDS = RUNTIME / "ssot_cold_offload_holds.json"
 #: so a row's days never change; reading them again was a JSON parse of every
 #: evaluation in the window each run (146 s of a 185 s plan, 2026-10-15).
 ROW_DAYS_CACHE = RUNTIME / "ssot_cold_offload_row_days.sqlite"
+PLAN_COSTS = RUNTIME / "ssot_cold_offload_plan_costs.json"
 RECEIPT = RUNTIME / "ssot_cold_offload_latest.json"
 LOCK = RUNTIME / "ssot_cold_offload.lock"
 
@@ -2661,6 +2662,80 @@ WAL_SETTLE_MAX_SECONDS = 180.0
 #: The share of an applied run's budget its planning may take before the
 #: moves start on what is planned.
 PLAN_BUDGET_SHARE = 0.5
+# A table's measured planning cost is trusted this long; past it the table is
+# planned again before the tables measured to free nothing.
+PLAN_COST_STALE_HOURS = 24.0
+
+
+def _fresh_cost(table: str, costs: Mapping[str, Any], now: datetime) -> Mapping[str, Any] | None:
+    cost = costs.get(table)
+    if not isinstance(cost, Mapping) or cost.get("remaining_bytes") is None:
+        return None
+    at = _instant(cost.get("measured_at_utc"))
+    if at is None or (now - at).total_seconds() > PLAN_COST_STALE_HOURS * 3600:
+        return None
+    return cost
+
+
+def plan_seconds_due(table: str, costs: Mapping[str, Any], now: datetime) -> float | None:
+    """The table's measured planning seconds, while that measurement is fresh."""
+
+    cost = _fresh_cost(table, costs, now)
+    return None if cost is None else float(cost.get("plan_seconds") or 0.0)
+
+
+def plan_order(policies: Sequence[TablePolicy], costs: Mapping[str, Any],
+               now: datetime) -> list[TablePolicy]:
+    """Plan the tables that free the most per planning second first.
+
+    2026-11-01 (user 「Reorder planning」): the 15:45 run planned the previous
+    run's leftovers first, the OOS evaluation table, which read for about 18
+    minutes beside a busy writer, was interrupted at the WAL line and spent
+    the whole planning share; the WS snapshots (1.44 GiB for 110 s) and the
+    envelopes (0.44 GiB for 26 s) were never reached.  Tiers, each in order:
+    measured to free bytes, by bytes per second; unmeasured or stale, cheapest
+    known cost first; measured to free nothing, cheapest first.
+    """
+
+    def tier(policy: TablePolicy) -> tuple:
+        cost = _fresh_cost(policy.table, costs, now)
+        if cost is None:
+            known = costs.get(policy.table)
+            return (1, float(known.get("plan_seconds") or 0.0) if isinstance(known, Mapping) else 0.0)
+        seconds = max(float(cost.get("plan_seconds") or 0.0), 1.0)
+        if int(cost["remaining_bytes"]) > 0:
+            return (0, -int(cost["remaining_bytes"]) / seconds)
+        return (2, seconds)
+
+    order = {policy.table: index for index, policy in enumerate(policies)}
+    return sorted(policies, key=lambda p: (*tier(p), order[p.table]))
+
+
+def updated_plan_costs(costs: Mapping[str, Any], receipt: Mapping[str, Any]) -> dict[str, Any]:
+    """Fold one run's measurements into the cost book.
+
+    A finished plan records its seconds and what it left after this run's
+    moves; an interrupted one only raises the known cost (its yield and its
+    measurement time stay as they were, so it is still due a fresh plan)."""
+
+    book = {k: dict(v) for k, v in costs.items() if isinstance(v, Mapping)}
+    moved: dict[str, int] = {}
+    for move in receipt.get("moves") or []:
+        moved[str(move.get("table"))] = moved.get(str(move.get("table")), 0) + int(move.get("moved_bytes") or 0)
+    at = receipt.get("generated_at_utc")
+    for row in receipt.get("tables") or []:
+        table, seconds = str(row.get("table")), row.get("plan_seconds")
+        if seconds is None:
+            continue
+        if row.get("state") in ("planned", "nothing_to_move", "nothing_old"):
+            book[table] = {
+                "plan_seconds": float(seconds), "measured_at_utc": at,
+                "remaining_bytes": max(int(row.get("estimated_bytes") or 0) - moved.get(table, 0), 0),
+            }
+        elif any("interrupted" in str(reason) for reason in row.get("refused") or []):
+            entry = book.setdefault(table, {})
+            entry["plan_seconds"] = max(float(entry.get("plan_seconds") or 0.0), float(seconds))
+    return book
 
 
 @dataclass
@@ -3108,12 +3183,12 @@ def run(
     policies: Sequence[TablePolicy] = POLICIES,
     sleep: Callable[[float], None] = time.sleep,
     row_days_cache: Path | None = None,
-    plan_first: Sequence[str] = (),
+    plan_costs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Plan every selected table; with ``apply``, move what the plan names.
 
-    ``plan_first``: tables the previous run left unplanned when its planning
-    share ran out, planned ahead of the registry order this time.
+    ``plan_costs``: each table's measured planning seconds and yield from
+    earlier runs (``plan_order``); the receipt is folded back in by the caller.
     """
 
     started = time.monotonic()
@@ -3136,8 +3211,8 @@ def run(
     }
     by_table = {policy.table: policy for policy in policies}
     selected = [by_table[name] for name in tables] if tables else list(policies)
-    first = set(plan_first)
-    selected = [p for p in selected if p.table in first] + [p for p in selected if p.table not in first]
+    selected = plan_order(selected, plan_costs or {}, _utc_now())
+    receipt["plan_order"] = [p.table for p in selected]
     if apply and status.get("state") != "available":
         # These rows are not re-obtainable: without the tier they stay hot,
         # and there is no reason to spend the store's reads planning a move
@@ -3194,14 +3269,22 @@ def run(
         # (2026-10-27, user 「继续」 on the full store): on a swapping host the
         # plans alone took the whole 2,400 s at 03:42Z -- 1.39 GiB planned,
         # 0.01 GiB moved -- and the store reached its ceiling with every
-        # writer stopped for three hours.  Tables not planned in time are
-        # planned first next run (``plan_first``, from this run's receipt).
+        # writer stopped for three hours.  Tables are planned best yield per
+        # planning second first (``plan_order``), so the share goes where it
+        # frees the most.
         plan_deadline = (
             started + float(budget_seconds) * PLAN_BUDGET_SHARE
             if apply and budget_seconds and budget_seconds > 0 else None
         )
         for policy in selected:
-            if plan_deadline is not None and plans and time.monotonic() >= plan_deadline:
+            # A table measured to take longer than the share has left is
+            # passed over for cheaper ones (the 10:26Z run spent 2,711 s on
+            # one OOS plan); one whose measurement is stale gets its try.
+            known = plan_seconds_due(policy.table, plan_costs or {}, _utc_now())
+            if plan_deadline is not None and plans and (
+                time.monotonic() >= plan_deadline
+                or (known is not None and time.monotonic() + known > plan_deadline)
+            ):
                 receipt["tables"].append(TablePlan(
                     policy=policy, cutoff=policy.cutoff_date(moment), state="not_planned_budget",
                 ).summary())
@@ -3432,17 +3515,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     since=args.since, until=args.until, holds_path=holds)
             print(json.dumps(outcome, ensure_ascii=False, indent=2))
             return 0
-        previous: dict[str, Any] = {}
-        if receipt_path and receipt_path.is_file():
+        costs_path = runtime / PLAN_COSTS.name
+        costs: dict[str, Any] = {}
+        if costs_path.is_file():
             try:
-                previous = json.loads(receipt_path.read_text(encoding="utf-8"))
+                costs = json.loads(costs_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
-                previous = {}
+                costs = {}
         receipt = run(
-            plan_first=[
-                str(row.get("table")) for row in (previous.get("tables") or [])
-                if isinstance(row, dict) and row.get("state") == "not_planned_budget"
-            ],
+            plan_costs=costs,
             ssot_path=ssot_path, cold_root=Path(root) if root is not None else None,
             tables=args.tables, apply=args.apply, budget_seconds=args.budget_seconds,
             pause_factor=args.pause_factor, batch_rows=args.batch_rows,
@@ -3456,6 +3537,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             receipt_path.write_text(
                 json.dumps(receipt, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
             )
+        costs_path.parent.mkdir(parents=True, exist_ok=True)
+        costs_path.write_text(
+            json.dumps(updated_plan_costs(costs, receipt), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         _print_summary(receipt)
         return 1 if receipt.get("state") == "stopped" else 0
     finally:
