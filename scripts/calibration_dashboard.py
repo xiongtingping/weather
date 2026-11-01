@@ -19292,19 +19292,18 @@ function wrfTmaxPanel(){
       return `<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天最高温的逐次预报">${g}</svg>
         <div class="muted" style="font-size:11.5px">每个点＝一次更新报的今天最高温；横轴＝三日预报的起报时次（UTC）或当天临近预报的出数时间（当地）；实心点＝最新；${bfUps.length ? "青色虚线方块＝IFS+GDPS 补跑过去时次（10-30 前实时为 GFS 驱动，补跑只作对照、不计前向成绩）；" : ""}悬停看与上一次的差</div>`;
     })();
-    // Today hour by hour (user 2026-11-01 「增加当天的曲线图」): the newest three-day run (its mean and each
-    // member), the newest nowcast of each route, and the airport's reports so far, on the local clock.
+    // Today hour by hour (user 2026-11-01 「增加当天的曲线图」「曲线是当天临近预报，不是3日预报」): the
+    // same-day nowcasts -- the newest of each route bold, the IFS+GDPS route's earlier versions faint --
+    // and the airport's reports so far, on the local clock.
     const dayChart = (() => {
       const gfsNew = TD.nowcast_update_run && (TD.nowcast_updates || []).length && (!TD.nowcast
         || String(TD.nowcast_updates[TD.nowcast_updates.length - 1].ready_utc) > String(TD.nowcast.ready_utc || ""));
       const gfsSer = gfsNew ? TD.nowcast_update_run.series : ((TD.configs || {}).nowcast_sat || {}).series, igLast = tIg[tIg.length - 1];
-      const ms = (tf || {}).member_series || {};
+      const gfsLast = (TD.nowcast_updates || []).concat(TD.nowcast ? [TD.nowcast] : []).sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc))).pop();
       const lines = [
-        ...(ms.ifs ? [{pts: ms.ifs, c: KCOL.fcst, w: 1.2, dash: "2 3", name: "三日预报·IFS 成员"}] : []),
-        ...(ms.gdps ? [{pts: ms.gdps, c: KCOL.fcst, w: 1.2, dash: "6 3", name: "三日预报·GDPS 成员"}] : []),
-        ...(tf && tf.series ? [{pts: tf.series, c: KCOL.fcst, w: 2.4, name: `三日预报·IFS+GDPS 平均（${String(tf.init_utc || "").slice(5, 10)} ${String(tf.init_utc || "").slice(11, 13)}Z）`, peak: true}] : []),
-        ...(gfsSer && gfsSer.length ? [{pts: gfsSer, c: KCOL.nowcast, w: 2.2, name: "临近预报·GFS 最新一版", peak: true}] : []),
-        ...(igLast && (igLast.series || []).length ? [{pts: igLast.series, c: KCOL.nowcast_ig, w: 2.2, name: "临近预报·IFS+GDPS 最新一版", peak: true}] : []),
+        ...tIg.slice(0, -1).filter(r => (r.series || []).length).map(r => ({pts: r.series, c: KCOL.nowcast_ig, w: 1, op: 0.3, name: `临近预报·IFS+GDPS ${loc(r.ready_utc)} 版`, old: true})),
+        ...(gfsSer && gfsSer.length ? [{pts: gfsSer, c: KCOL.nowcast, w: 2.4, name: `临近预报·GFS 最新一版${gfsLast ? `（${loc(gfsLast.ready_utc)}）` : ""}`, peak: true}] : []),
+        ...(igLast && (igLast.series || []).length ? [{pts: igLast.series, c: KCOL.nowcast_ig, w: 2.4, name: `临近预报·IFS+GDPS 最新一版（${loc(igLast.ready_utc)}）`, peak: true}] : []),
       ];
       const obs = TD.obs_series || [];
       if(!lines.length && !obs.length) return "";
@@ -19324,7 +19323,7 @@ function wrfTmaxPanel(){
       const nowX = hr(Date.now());
       if(nowX > 0 && nowX < 24) g += `<line x1="${X(nowX)}" x2="${X(nowX)}" y1="${pt}" y2="${Hh - pb}" stroke="var(--muted)" stroke-dasharray="2 3"/><text x="${X(nowX) + 3}" y="${pt + 9}" font-size="10" fill="var(--muted)">现在</text>`;
       if(TD.truth_c != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(TD.truth_c)}" y2="${Y(TD.truth_c)}" stroke="var(--text)" stroke-dasharray="5 3"/><text x="${W - pr}" y="${Y(TD.truth_c) - 4}" text-anchor="end" font-size="10.5" fill="var(--text)">实测最高 ${n(TD.truth_c, 0)}°</text>`;
-      L2.forEach(l => { g += `<polyline fill="none" stroke="${l.c}" stroke-width="${l.w}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""} points="${l.xy.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"><title>${h(l.name)}</title></polyline>`; });
+      L2.forEach(l => { g += `<polyline fill="none" stroke="${l.c}" stroke-width="${l.w}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""}${l.op ? ` opacity="${l.op}"` : ""} points="${l.xy.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"><title>${h(l.name)}</title></polyline>`; });
       // each main curve's peak, its value above it; labels that would touch stack downward
       const placed = [];
       L2.filter(l => l.peak).map(l => ({l, p: l.xy.reduce((a, b) => b[1] > a[1] ? b : a)})).sort((a, b) => b.p[1] - a.p[1]).forEach(({l, p}) => {
@@ -19339,9 +19338,12 @@ function wrfTmaxPanel(){
       O.forEach(p => { const hh = Math.floor(p[0]), mm = Math.round((p[0] - hh) * 60);
         g += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3" fill="var(--text)"><title>${h(`机场报文 ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} · ${n(p[1], 0)}°C`)}</title></circle>`; });
       const obsMax = O.length ? Math.max(...O.map(p => p[1])) : null;
-      const key = L2.map(l => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:${Math.max(2, Math.round(l.w))}px ${l.dash ? "dashed" : "solid"} ${l.c};display:inline-block"></i>${h(l.name)}</span>`).join("")
+      const nOld = L2.filter(l => l.old).length;
+      const key = L2.filter(l => !l.old).map(l => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:${Math.max(2, Math.round(l.w))}px ${l.dash ? "dashed" : "solid"} ${l.c};display:inline-block"></i>${h(l.name)}</span>`).join("")
+        + (nOld ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:1px solid ${KCOL.nowcast_ig};opacity:.4;display:inline-block"></i>IFS+GDPS 较早各版（${nOld}）</span>` : "")
         + (O.length ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--text);display:inline-block"></i>机场报文（至今最高 ${n(obsMax, 0)}°）</span>` : "");
-      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温（当地时）</div>
+      if(!L2.length && O.length < 2) return "";
+      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温 · 当天临近预报（当地时）${L2.length ? "" : " · 今天的临近预报还没出"}</div>
         <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天逐小时气温">${g}</svg>
         <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:2px">${key}</div>`;
     })();
