@@ -78,6 +78,10 @@ OPTIONAL_PLISTS=(
   # the health page's cheap sections, then the page drawn read-only.  A
   # reader of the store; it writes only section-cache files and the page.
   com.weather.dashboard_health.plist
+  # The egress proxy watchdog, every minute (2026-11-01, 「自动拉起
+  # Shadowrocket 的守护」): restarts the Shadowrocket VPN when nothing
+  # listens on the production proxy port.  Never opens the SSOT.
+  com.weather.egress_proxy_watchdog.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")
