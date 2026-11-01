@@ -23306,9 +23306,9 @@ function sdMemberBayes(day){
 // 2026-10-31 「显示具体切换站点的，而不是平均数」): its own 13:00 in big, its 10:00 and
 // 16:00 and its own station-days against the market in small, the all-station figure
 // last for reference.  Read only.
-const SD_HIT_NAMES = {"P0": "P0 概率", "P0-M": "P0-M 概率", "P1": "P1 概率", market: "市场", F: "确定性预报 F",
+const SD_HIT_NAMES = {"P0": "P0 概率", "P1": "P1 概率", market: "市场", F: "确定性预报 F",
   member_bayes: "成员轨迹贝叶斯", D0: "D0 实况模型", MOS: "观测更新型 MOS", WRF: "WRF", best_match: "best_match"};
-const SD_HIT_COL = {"P0": SD_COL.P0, "P0-M": SD_COL["P0-M"], "P1": SD_COL.P1, market: SD_COL.MKT, F: SD_COL.DET,
+const SD_HIT_COL = {"P0": SD_COL.P0, "P1": SD_COL.P1, market: SD_COL.MKT, F: SD_COL.DET,
   member_bayes: SD_COL.MB, D0: SD_COL.D0, MOS: SD_COL.MOS, WRF: SD_COL.WRF, best_match: SD_COL.BM};
 function sdHitStrip(day){
   const H = (SD.data || {}).estimate_hit;
@@ -23318,7 +23318,7 @@ function sdHitStrip(day){
   const pc = x => x && x.n ? Math.round(100 * x.hits / x.n) + "%" : "—";
   const main = "13", S = H.station || {};
   const vsOf = (m, x) => m !== "market" && x && x.pair_n ? `同站日 ${Math.round(100 * x.pair_hits / x.pair_n)}% 对市场 ${Math.round(100 * x.pair_market_hits / x.pair_n)}%` : "";
-  const cards = (H.methods || []).map(m => {
+  let cards = (H.methods || []).map(m => {
     const f = (H.fleet[main] || {})[m] || {};
     const own = (S[main] || {})[m] || {}, o10 = (S["10"] || {})[m], o16 = (S["16"] || {})[m];
     const vs = vsOf(m, own);
@@ -23333,7 +23333,23 @@ function sdHitStrip(day){
       <div class="sd-hit-s">10点 ${pc(o10)} · 16点 ${pc(o16)} · ${own.n || 0} 站日</div>
       ${vs ? `<div class="sd-hit-s">${vs}</div>` : ""}
       <div class="sd-hit-s muted">全部站 ${pc(f)}</div></div>`;
-  }).join("");
+  });
+  // TAF TX beside P0, where the retired P0-M stood (user 2026-11-02 「改为taf的tx真值命中率（首次和更新（如有）」):
+  // the day's first TAF with a TX, and the newest out by local 13:00 when a later TAF came.
+  const T = H.taf || {}, TO = (T.stations || {})[SD.station] || {}, TF = T.fleet || {}, tf = TO.first || {}, tu = TO.update || {};
+  const tafTip = `TAF TX：机场 TAF 预报的当天最高温（TX 组）所在的温度档是否等于结算实测档`
+    + `\n首次＝这一天第一份带 TX 的 TAF；更新＝当地 13 点前最新一份 TAF，且它不是首次那份（没有更新的日子不计）`
+    + `\n${SD.station}：首次 ${tf.hits || 0}/${tf.n || 0}，更新 ${tu.hits || 0}/${tu.n || 0}；全部站 首次 ${(TF.first || {}).hits || 0}/${(TF.first || {}).n || 0}，更新 ${(TF.update || {}).hits || 0}/${(TF.update || {}).n || 0}`
+    + `\n不少机场的 TAF 不发 TX 组，那些站没有这张卡的读数`;
+  const tafCard = `<div class="sd-hit" style="--c:${SD_COL.TX}" title="${sdEsc(tafTip)}">
+      <div class="sd-hit-t">TAF TX</div>
+      <div class="sd-hit-v">${pc(tf)}</div>
+      <div class="sd-hit-s">首次 · ${tf.n || 0} 站日${tf.n ? "" : "（本站 TAF 没有 TX）"}</div>
+      <div class="sd-hit-s">更新 ${tu.n ? `${pc(tu)} · ${tu.n} 站日` : "—（没有更新）"}</div>
+      <div class="sd-hit-s muted">全部站 首次 ${pc(TF.first)} · 更新 ${pc(TF.update)}</div></div>`;
+  const at = (H.methods || []).indexOf("P0") + 1;
+  if(T.fleet) cards.splice(at, 0, tafCard);
+  cards = cards.join("");
   return `<div class="sd-hit-wrap"><div class="sd-hit-h">真值命中率 · ${sdEsc(SD.station)} <small>当地 13 点时指向的档 = 结算实测档 · 本站已结算站日（全部站 ${H.days} 个事件日，${sdEsc(H.since || "")} 起）</small></div><div class="sd-hit-grid">${cards}</div></div>`;
 }
 // When the estimates close in on the truth, and a 0..100 confidence now (user 2026-10-23

@@ -2898,7 +2898,10 @@ def estimate_hit_view(station: str) -> dict[str, Any] | None:
         return None
     return {"as_of_utc": v.get("as_of_utc"), "since": v.get("since"), "days": len(v.get("days") or []),
             "hours": v.get("snapshot_hours_local"), "methods": v.get("methods"), "mos_from": v.get("mos_from"),
-            "fleet": v.get("fleet"), "station": (v.get("stations") or {}).get(station), "convergence": v.get("convergence")}
+            "fleet": v.get("fleet"), "station": (v.get("stations") or {}).get(station), "convergence": v.get("convergence"),
+            # TAF TX's first and updated TAF (user 2026-11-02 「改为taf的tx真值命中率（首次和更新（如有）」)
+            "taf": {"fleet": (v.get("taf") or {}).get("fleet"),
+                    "stations": {station: ((v.get("taf") or {}).get("stations") or {}).get(station)}} if v.get("taf") else None}
 
 
 def first_forecast_view(station: str) -> dict[str, Any] | None:

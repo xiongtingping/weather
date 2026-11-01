@@ -8,7 +8,8 @@ snapshot times on the event day (``SNAPSHOT_HOURS``), so the rates are comparabl
 each method is also paired with the market on the station-days both have.
 
 Methods and where their history lives (all read only):
-  P0 / P0-M / P1  -- ``basket_probability_envelope`` (newest committed per stage)
+  P0 / P1         -- ``basket_probability_envelope`` (newest committed per stage; P0-M retired,
+                     charter 283)
   market          -- ``basket_official_ws_snapshot`` within 30 minutes
   deterministic F -- charter 267's ledger (F as recorded at listing)
   member Bayes    -- ``data/board_readings/member_bayes_history``
@@ -17,6 +18,11 @@ Methods and where their history lives (all read only):
                      day with the current coefficients; only days after their fit
                      window count (out of sample)
   WRF             -- the ZUUU nowcast record (``wrf_readings``)
+  TAF TX          -- the official TAFs captured for the station-day (charter 263's forward capture
+                     table, the rolling revision inbox after it stopped on 10-27): the first TAF
+                     carrying a TX for the day, and the newest one out by local 13:00 when that is a
+                     later TAF (user 2026-11-02 「改为taf的tx真值命中率（首次和更新（如有）」); judged
+                     once, when the day settles, so the inbox rolling over loses nothing
 
 Writes ``data/board_readings/estimate_hit.json``.  A settled station-day's verdicts
 are cached under ``data/runtime/estimate_hit`` and recomputed only when its truth
@@ -43,12 +49,15 @@ READING_NAME = "estimate_hit"
 CACHE_PATH = ROOT / "data" / "runtime" / "estimate_hit" / "verdicts_v1.json"
 READINGS_DIR = ROOT / "data" / "board_readings"
 F_LEDGER = ROOT / "data" / "runtime" / "listing_forecast_f_mos_ledger_v1.jsonl"
+TAF_INBOX = ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
 COMPOSITE_FIT = ROOT / "data" / "runtime" / "tmax_composite" / "tmax_composite_shift_v1.json"
 #: The board's estimates started on different days; the window starts with D0.
 SINCE = date(2026, 10, 15)
 SNAPSHOT_HOURS = (10, 13, 16)
 CURVE_HOURS = tuple(range(24))
-METHODS = ("P0", "P0-M", "P1", "market", "F", "member_bayes", "D0", "MOS", "WRF")
+METHODS = ("P0", "P1", "market", "F", "member_bayes", "D0", "MOS", "WRF")
+#: TAF TX: the update is the newest TAF out by this local hour on the event day.
+TAF_UPDATE_HOUR = 13
 MARKET_WINDOW_MIN = 30
 #: MOS is recomputed (Open-Meteo, satellite) only for this many closed days per pass,
 #: and only while the pass is inside its time budget: each costs ~15-20 s of network,
@@ -169,6 +178,54 @@ def _wrf_records() -> dict[str, list[dict[str, Any]]]:
         return {}
 
 
+def _taf_txs(conn: sqlite3.Connection) -> dict[tuple[str, str], list[tuple[str, str, float]]]:
+    """(station, event day) -> its TAFs with a TX, (available, issued, TX °C) by availability."""
+
+    seen: dict[tuple[str, str, str], tuple[str, float]] = {}
+    for st, day, issued, avail, tx in conn.execute(
+            "SELECT station_id, event_date, issued_at_utc, provider_available_at_utc, tx_c FROM calibration_forward_taf_capture"
+            " WHERE event_date>=? AND tx_c IS NOT NULL AND source_class='official_forward_native_receipt'", (SINCE.isoformat(),)):
+        k = (st, day, issued)
+        if k not in seen or str(avail) < seen[k][0]:
+            seen[k] = (str(avail), float(tx))
+    try:
+        captures = json.loads(TAF_INBOX.read_text(encoding="utf-8")).get("captures") or []
+    except (OSError, ValueError, AttributeError):
+        captures = []
+    for c in captures:
+        if not isinstance(c, dict) or c.get("source_class") != "official_forward_native_receipt":
+            continue
+        rev, tx = c.get("forecast_revision") or {}, (c.get("taf_fields") or {}).get("tx_c")
+        st, day, issued, avail = c.get("station_id"), c.get("event_date"), rev.get("issued_at_utc"), c.get("provider_available_at_utc")
+        if tx is None or not (st and day and issued and avail) or str(day) < SINCE.isoformat():
+            continue
+        k = (str(st), str(day), str(issued))
+        if k not in seen or str(avail) < seen[k][0]:
+            seen[k] = (str(avail), float(tx))
+    out: dict[tuple[str, str], list[tuple[str, str, float]]] = {}
+    for (st, day, issued), (avail, tx) in seen.items():
+        out.setdefault((st, day), []).append((avail, issued, tx))
+    for rows in out.values():
+        rows.sort()
+    return out
+
+
+def taf_verdict(ladder, truth_label: str | None, txs: list[tuple[str, str, float]], day: str, zone: ZoneInfo) -> dict[str, Any] | None:
+    """The day's first TAF TX and, when a later TAF is out by local 13:00, the newest such, each
+    against the truth's bucket."""
+
+    if not txs or truth_label is None:
+        return None
+    cut = _iso(datetime.combine(date.fromisoformat(day), datetime.min.time(), zone) + timedelta(hours=TAF_UPDATE_HOUR))
+    first = txs[0]
+    out: dict[str, Any] = {"first": {"tx_c": first[2], "issued_utc": first[1], "hit": _label_of(ladder, first[2]) == truth_label}}
+    by13 = [r for r in txs if r[0].replace("+00:00", "Z") <= cut]
+    if by13 and by13[-1] != first:
+        u = by13[-1]
+        out["update"] = {"tx_c": u[2], "issued_utc": u[1], "hit": _label_of(ladder, u[2]) == truth_label}
+    return out
+
+
 def _mos_series(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo) -> list[tuple[int, float]] | None:
     """(local hour, estimated maximum °C) as the board's MOS card had it each hour."""
 
@@ -229,7 +286,7 @@ def picks_at(conn: sqlite3.Connection, station: str, day: str, when: datetime, l
     at = _iso(when)
     h = when.hour
     picks: dict[str, str | None] = {}
-    for stage in ("P0", "P0-M", "P1"):
+    for stage in ("P0", "P1"):
         row = conn.execute(
             "SELECT probabilities_json FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
             " AND state='COMMITTED' AND +stage=? AND decision_at_utc<=? ORDER BY decision_at_utc DESC LIMIT 1",
@@ -266,7 +323,7 @@ def picks_at(conn: sqlite3.Connection, station: str, day: str, when: datetime, l
 
 
 def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, truth_c: float,
-             *, f_ledger, wrf, d0, mb, mos_ok: bool, bm=None) -> dict[str, Any] | None:
+             *, f_ledger, wrf, d0, mb, mos_ok: bool, bm=None, tafs=None) -> dict[str, Any] | None:
     """One settled station-day: the truth's bucket and each method's bucket per snapshot."""
 
     ladder = _rungs(conn, station, day)
@@ -286,7 +343,8 @@ def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, t
     curve = {str(h): picks_at(conn, station, day, local0 + timedelta(hours=h), ladder,
                               f=f_ledger.get((station, day)), wrf=wrf, d0=d0, mb=mb, mos=mos, bm=bm) for h in CURVE_HOURS}
     return {"truth_c": truth_c, "truth": truth_label, "snaps": {str(h): curve[str(h)] for h in SNAPSHOT_HOURS},
-            "curve": curve, "rank": {r[0]: i for i, r in enumerate(ladder[0])}}
+            "curve": curve, "rank": {r[0]: i for i, r in enumerate(ladder[0])},
+            "taf": taf_verdict(ladder, truth_label, (tafs or {}).get((station, day)) or [], day, zone)}
 
 
 def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
@@ -295,6 +353,7 @@ def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
 
     fleet = {str(h): blank() for h in SNAPSHOT_HOURS}
     stations: dict[str, Any] = {}
+    taf = {"fleet": {"first": {"n": 0, "hits": 0}, "update": {"n": 0, "hits": 0}}, "stations": {}}
     days: set[str] = set()
     for key, v in cache.items():
         if not v or not v.get("truth"):
@@ -302,6 +361,11 @@ def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
         st, day = key.split("|")
         days.add(day)
         per = stations.setdefault(st, {str(h): blank() for h in SNAPSHOT_HOURS})
+        for k, x in (v.get("taf") or {}).items():
+            own = taf["stations"].setdefault(st, {"first": {"n": 0, "hits": 0}, "update": {"n": 0, "hits": 0}})
+            for agg in (taf["fleet"][k], own[k]):
+                agg["n"] += 1
+                agg["hits"] += int(bool(x.get("hit")))
         for h, picks in (v.get("snaps") or {}).items():
             mk = picks.get("market")
             for m in METHODS:
@@ -316,7 +380,7 @@ def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
                         agg["pair_n"] += 1
                         agg["pair_hits"] += int(hit)
                         agg["pair_market_hits"] += int(mk == v["truth"])
-    return {"fleet": fleet, "stations": stations, "days": sorted(days)}
+    return {"fleet": fleet, "stations": stations, "days": sorted(days), "taf": taf}
 
 
 #: The methods the convergence timeline follows and that vote in the confidence score.
@@ -415,7 +479,7 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dic
     cache = dict(cache or {})
     zones = _zones(conn)
     truths = _truths(conn, SINCE)
-    f_ledger, wrf, bm = _f_ledger(), _wrf_records(), _best_match_history()
+    f_ledger, wrf, bm, tafs = _f_ledger(), _wrf_records(), _best_match_history(), _taf_txs(conn)
     mos_from = _mos_first_day()
     mos_budget = MOS_DAYS_PER_PASS
     by_day: dict[str, list[str]] = {}
@@ -432,12 +496,15 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dic
             old = cache.get(key)
             if (old and old.get("truth_c") == t and "curve" in old and (old.get("mos_done") or mos_from is None or date.fromisoformat(day) < mos_from)
                     and (old.get("bm_done") or day < BEST_MATCH_FROM)):
+                if "taf" not in old:   # cached before the TAF card: judged on its own
+                    ladder = _rungs(conn, st, day)
+                    old["taf"] = taf_verdict(ladder, old.get("truth"), tafs.get((st, day)) or [], day, zone) if ladder else None
                 continue
             mos_ok = (mos_from is not None and date.fromisoformat(day) >= mos_from and mos_budget > 0
                       and time.monotonic() - started < MOS_BUDGET_SEC)
             if mos_ok:
                 mos_budget -= 1
-            v = verdicts(conn, st, day, zone, t, f_ledger=f_ledger, wrf=wrf, d0=d0, mb=mb, mos_ok=mos_ok, bm=bm)
+            v = verdicts(conn, st, day, zone, t, f_ledger=f_ledger, wrf=wrf, d0=d0, mb=mb, mos_ok=mos_ok, bm=bm, tafs=tafs)
             if v is not None:
                 v["mos_done"] = mos_ok
                 v["bm_done"] = (st, day) in bm

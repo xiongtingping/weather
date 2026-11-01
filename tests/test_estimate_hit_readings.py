@@ -39,3 +39,26 @@ def test_wrf_pick_is_the_newest_issue_out_by_then(monkeypatch):
     assert (pick(11), pick(12), pick(13), pick(14)) == (None, "25", "25", "24")
     assert E.picks_at(conn, "EGLC", "2026-10-25", datetime(2026, 10, 25, 14, tzinfo=zone), None,
                       f=None, wrf=wrf, d0={}, mb={}, mos=None)["WRF"] is None
+
+
+def test_taf_tx_first_and_newest_by_13_against_the_truth(monkeypatch):
+    """TAF TX in place of P0-M (user 2026-11-02 「改为taf的tx真值命中率（首次和更新（如有）」): the first
+    TAF with a TX for the day, and the newest out by local 13:00 when that is a later TAF; a day whose
+    only TAF is the first has no update."""
+
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    monkeypatch.setattr(E, "_label_of", lambda ladder, v: None if v is None else f"{v:g}")
+    zone = ZoneInfo("Asia/Shanghai")
+    txs = [("2026-10-31T21:01:00Z", "2026-10-31T21:01:00Z", 21.0),   # first, 05:01 local on the day before
+           ("2026-11-01T04:01:17Z", "2026-11-01T03:03:00Z", 20.0),   # 12:01 local: the update
+           ("2026-11-01T10:01:08Z", "2026-11-01T09:05:00Z", 22.0)]   # 18:01 local: after 13:00, not counted
+    v = E.taf_verdict(None, "20", txs, "2026-11-01", zone)
+    assert v["first"] == {"tx_c": 21.0, "issued_utc": "2026-10-31T21:01:00Z", "hit": False}
+    assert v["update"]["tx_c"] == 20.0 and v["update"]["hit"] is True
+    assert "update" not in E.taf_verdict(None, "21", txs[:1], "2026-11-01", zone)
+    assert E.taf_verdict(None, "21", [], "2026-11-01", zone) is None
+    s = E._summarize({"ZUUU|2026-11-01": {"truth": "20", "snaps": {}, "taf": v},
+                      "EGLC|2026-11-01": {"truth": "15", "snaps": {}, "taf": {"first": {"hit": True}}}})
+    assert s["taf"]["fleet"] == {"first": {"n": 2, "hits": 1}, "update": {"n": 1, "hits": 1}}
+    assert s["taf"]["stations"]["ZUUU"]["update"] == {"n": 1, "hits": 1}
