@@ -26,12 +26,13 @@ def test_gateway_pause_gate_is_dynamic_and_precedes_idempotency_admission():
     method = source.split("async placeOrderWithIdempotency(payload)", 1)[1].split(
         "const key = String(payload.idempotency_key", 1
     )[0]
-    assert "if (livePausePresent())" in method
+    # One exemption only: the board's own hand orders (user 2026-11-01).  No
+    # lane id may be added -- an admitted ASOS argmax intent used to walk
+    # past this gate (closed 2026-08-30).
+    assert "if (livePausePresent() && strategyId !== MANUAL_BOARD_STRATEGY_ID)" in method
+    assert 'const MANUAL_BOARD_STRATEGY_ID = "operator_manual_board_v1";' in source
     assert "clob_order_service_live_paused" in method
     assert "exchange_post_started: false" in method
-    # The pause gate carries no lane exemption: it is the operator's stop for
-    # the whole gateway, and an admitted ASOS argmax intent used to walk past
-    # it (closed 2026-08-30, see test_asos_argmax_gateway_admission).
     assert "if (!isAsosLive)" not in _code_only(method)
     code = _code_only(method)
     assert "persistIntent" not in code
@@ -141,6 +142,59 @@ def test_live_pause_rejects_before_persistence_signing_or_exchange(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["error"] == "clob_order_service_live_paused"
+
+
+def test_live_pause_admits_the_boards_manual_orders_and_no_lane(tmp_path):
+    """The pause flag stops the lanes, not the operator's own hand.
+
+    User 2026-11-01「暂停旗不应该影响手动买入和卖出」: with the flag up, a
+    board buy or sell (``operator_manual_board_v1``) passes the pause gate and
+    reaches persistence; any other strategy id is still refused there.  The
+    read-only bit keeps no exception for anyone.
+    """
+    pause = tmp_path / "live_paused.flag"
+    pause.write_text("test\n", encoding="utf-8")
+    service_uri = (ROOT / "scripts" / "clob_order_service.mjs").as_uri()
+    script = f"""
+      process.env.PM_LIVE_PAUSE_FILE = {json.dumps(str(pause))};
+      process.env.PM_DATA_DIR = {json.dumps(str(tmp_path))};
+      process.env.PM_CLOB_IGNORE_REGION_BLOCK = '1';
+      const {{ ClobOrderService }} = await import({json.dumps(service_uri)});
+      const service = new ClobOrderService();
+      service.client = {{
+        createOrder: async () => {{ throw new Error('must not sign'); }},
+        postOrder: async () => {{ throw new Error('must not post'); }},
+      }};
+      const out = {{}};
+      for (const id of ['operator_manual_board_v1', 'proper_maker_v4', '']) {{
+        let reached = false;
+        service.persistIntent = () => {{ reached = true; throw new Error('stop here'); }};
+        let result;
+        try {{
+          result = await service.placeOrderWithIdempotency({{
+            strategy_id: id, token_id: '123456', side: 'SELL', order_type: 'FOK',
+            price: 0.06, size: 60.87, allow_market: true, post_only: false,
+            idempotency_key: `k-${{id}}`, order_intent_id: `i-${{id}}`,
+          }});
+        }} catch (err) {{ result = {{ thrown: String(err.message) }}; }}
+        out[id || 'none'] = {{ reached, error: result.error || null }};
+      }}
+      process.env.PM_CLOB_ORDER_SERVICE_READ_ONLY = '1';
+      out.read_only = await service.placeOrderWithIdempotency({{
+        strategy_id: 'operator_manual_board_v1', idempotency_key: 'ro', order_intent_id: 'ro',
+      }});
+      console.log(JSON.stringify(out));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT,
+        text=True, capture_output=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    assert out["operator_manual_board_v1"]["error"] != "clob_order_service_live_paused"
+    for lane in ("proper_maker_v4", "none"):
+        assert out[lane] == {"reached": False, "error": "clob_order_service_live_paused"}, lane
+    assert out["read_only"]["error"] == "clob_order_service_read_only"
 
 
 def test_gateway_wrapper_is_user_domain_and_names_one_known_mode():

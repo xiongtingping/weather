@@ -42,6 +42,10 @@ const ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID = "asos_argmax_rotation_sell_fak_v1"
 // order passes through, so the ruling holds regardless of what any caller
 // still tries to submit.  ASOS keeps its real job: a canonical observation
 // source feeding P1.  It does not place orders.
+// The board's one-click buy/sell (bayes_basket_target/manual_basket_order.py).
+// The pause flag stops the automated lanes, not the operator's own hand
+// (user 2026-11-01「暂停旗不应该影响手动买入和卖出」).
+const MANUAL_BOARD_STRATEGY_ID = "operator_manual_board_v1";
 const RETIRED_STRATEGY_IDS = new Set([
   "weather_copy_follow_v1",
   ASOS_ARGMAX_LIVE_STRATEGY_ID,
@@ -2711,14 +2715,12 @@ export class ClobOrderService {
         source: SERVICE_NAME,
       };
     }
-    // The read-only bit and the pause flag admit no exceptions.  They used
-    // to admit one: an admitted ASOS argmax intent skipped both, so a lane
-    // the operator believed was stopped could reach the signer and POST
-    // /order, and data/live_paused.flag -- placed 2026-08-21 and described
-    // everywhere as the last manual e-stop -- was silently not one for that
-    // lane.  The exemption went on 2026-08-30 and the lane itself on
-    // 2026-08-31.  These are the human controls over the whole gateway, and
-    // no code path is left that could ask them for an exception.
+    // The read-only bit admits no exceptions.  The pause flag admits one: an
+    // order the operator places by hand on the board.  No lane may ask for
+    // it -- an admitted ASOS argmax intent once skipped both gates, so a lane
+    // the operator believed was stopped could reach the signer (closed
+    // 2026-08-30).  The flag stops the machine; it does not stop the person
+    // who raised it (user 2026-11-01「暂停旗不应该影响手动买入和卖出」).
     if (truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0"))) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
@@ -2729,7 +2731,7 @@ export class ClobOrderService {
         source: SERVICE_NAME,
       };
     }
-    if (livePausePresent()) {
+    if (livePausePresent() && strategyId !== MANUAL_BOARD_STRATEGY_ID) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
         error: "clob_order_service_live_paused",
