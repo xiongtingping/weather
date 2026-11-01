@@ -2777,8 +2777,16 @@ def move_table(
         if not same_rows(landed, rows):
             return "cold_verify_mismatch"
         # 4. Delete exactly what was verified.
-        if not _wait_for_wal(ssot_path, delete, sleep=sleep):
-            return "wal_not_draining"
+        began = time.monotonic()
+        drained = _wait_for_wal(
+            ssot_path, delete, sleep=sleep,
+            limit_sec=budget.seconds_left(WAL_WAIT_LIMIT_SEC),
+        )
+        result["wal_wait_seconds"] = float(result.get("wal_wait_seconds") or 0.0) + time.monotonic() - began
+        if not drained:
+            # Out of budget while the WAL was past the line is the budget's
+            # stop, not the lane's: nothing of this batch left the SSOT.
+            return "budget" if budget.expired() else "wal_not_draining"
         if shutil.disk_usage(ssot_path.parent).free < MIN_INTERNAL_FREE_BYTES:
             return "internal_disk_low"
         queued = time.monotonic()
@@ -3173,12 +3181,14 @@ def run(
         # made an hour before its move is as safe as one made just before.
         plans: list[TablePlan] = []
 
-        def wal_settled() -> None:
+        def wal_settled() -> float:
             # A read started into a WAL still past the line is interrupted at
             # once: 10-25/26 one yield made every later table of the run
             # "plan_error:interrupted" within the same second, and the SSOT
             # went into its last GiB with nothing planned.
+            began = time.monotonic()
             wait_for_wal_under(ssot_path, READER_YIELD_WAL_BYTES, budget.seconds_left(WAL_SETTLE_MAX_SECONDS))
+            return time.monotonic() - began
 
         # Planning may take half the budget; the rest is the moves'
         # (2026-10-27, user 「继续」 on the full store): on a swapping host the
@@ -3197,8 +3207,10 @@ def run(
                 ).summary())
                 continue
             plan = None
+            plan_began = time.monotonic()
+            waited = 0.0
             for attempt in range(2):
-                wal_settled()
+                waited += wal_settled()
                 try:
                     plan = plan_table(read, policy, as_of=moment, holds=holds,
                                       estimate_sample=estimate_sample,
@@ -3214,9 +3226,25 @@ def run(
                     plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
                                      refused=[f"plan_error:{type(exc).__name__}:{str(exc)[:200]}"])
                     break
-            receipt["tables"].append(plan.summary())
+            row = plan.summary()
+            # Where a run's time went (2026-11-01, user 「Dig into it」): the
+            # 13:56 run moved nothing and its receipt could not say why.
+            row["plan_seconds"] = round(time.monotonic() - plan_began - waited, 1)
+            row["wal_wait_seconds"] = round(waited, 1)
+            receipt["tables"].append(row)
             if apply and plan.state == "planned":
                 plans.append(plan)
+        receipt["planning_seconds"] = round(time.monotonic() - started, 1)
+        # The moves keep their share whatever planning took (2026-11-01):
+        # the deadline was checked only between tables and every table first
+        # waited up to WAL_SETTLE_MAX_SECONDS for the WAL, so planning could
+        # spend the whole budget -- the 13:56 run planned 3.4 GiB and moved
+        # nothing.  A run now lasts at most its plan overrun past the share.
+        if budget.deadline is not None and budget_seconds:
+            budget.deadline = max(
+                budget.deadline,
+                time.monotonic() + float(budget_seconds) * (1.0 - PLAN_BUDGET_SHARE),
+            )
         order = {policy.table: index for index, policy in enumerate(selected)}
         plans.sort(key=lambda p: (-int(p.estimated_bytes or 0), order[p.policy.table]))
         receipt["move_order"] = [p.policy.table for p in plans]
@@ -3226,7 +3254,7 @@ def run(
                 moves.append({"table": policy.table, "state": "not_started_budget" if not stopped
                               else "not_started_after_stop"})
                 continue
-            wal_settled()
+            settle = wal_settled()
             try:
                 outcome = move_table(
                     ssot_path=ssot_path, read=read, delete=delete, plan=plan, cold_root=root,
@@ -3240,6 +3268,7 @@ def run(
                     "table": policy.table, "state": "stopped",
                     "reason": f"error:{type(exc).__name__}:{str(exc)[:200]}",
                 }
+            outcome["wal_wait_seconds"] = round(float(outcome.get("wal_wait_seconds") or 0.0) + settle, 1)
             moves.append(outcome)
             stopped = stopped or outcome.get("state") == "stopped"
         receipt["candidate_rows"] = sum(int(t["candidate_rows"]) for t in receipt["tables"])
@@ -3332,13 +3361,18 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
             print(f"      执行向量点名、但本站日没有这份哈希的盘口：{row['absent_vector_refs']:,} 个（不留整站日）")
         print(f"      可搬 {int(row['candidate_rows']):,} 行 ≈ {gib(row.get('estimated_bytes'))}"
               + (f"（{row['oldest_candidate']} … {row['newest_candidate']}）" if row.get("oldest_candidate") else ""))
+        if row.get("plan_seconds") is not None:
+            print(f"      规划 {row['plan_seconds']} 秒，先等 WAL {row.get('wal_wait_seconds', 0)} 秒")
     print(f"  合计：七张表约 {gib(receipt.get('table_estimated_bytes'))}，可搬约 {gib(receipt.get('estimated_bytes'))}"
           f"（{int(receipt.get('candidate_rows') or 0):,} 行；行内数据量，不含索引与页内空隙）")
+    if receipt.get("planning_seconds") is not None:
+        print(f"  规划阶段共 {receipt['planning_seconds']} 秒")
     for row in receipt.get("moves") or []:
         print(
             f"  搬移 {row.get('table')}：{_STATE_WORDS.get(str(row.get('state')), row.get('state'))}"
             f"  {int(row.get('moved_rows', 0)):,} 行 ≈ {gib(row.get('moved_bytes'))}，{row.get('batches', 0)} 批，"
             f"单批持锁最长 {row.get('max_lock_sec', 0)} 秒"
+            + (f"，等 WAL {row['wal_wait_seconds']} 秒" if row.get("wal_wait_seconds") else "")
             + (f"  原因：{row['reason']}" if row.get("reason") else "")
         )
     after = receipt.get("store_after") or {}

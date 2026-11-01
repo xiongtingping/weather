@@ -1339,3 +1339,34 @@ def test_planning_takes_half_the_budget_and_the_rest_go_first_next_run(
     _run(store, cold, tmp_path, apply=True, budget_seconds=100.0,
          policies=(first, second), plan_first=[second.table])
     assert planned == [second.table] and moved == [second.table]
+
+
+def test_the_moves_keep_their_share_however_long_planning_took(
+    store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """2026-11-01 (user 「Dig into it」): the 13:56 run planned 3.4 GiB in its
+    first half plus the WAL waits before each table and moved nothing -- the
+    budget had run out before the first batch.  The moves now get their share
+    from the end of planning, and the receipt says where the time went."""
+
+    first = off.POLICIES[0]
+    clock = [1000.0]
+    monkeypatch.setattr(off.time, "monotonic", lambda: clock[0])
+    seen: dict[str, float] = {}
+
+    def plan(_conn, policy, **_kwargs):
+        clock[0] += 150.0          # planning alone overran the whole 100 s budget
+        return off.TablePlan(policy=policy, cutoff="2026-01-01", candidates=[1], estimated_bytes=1)
+
+    def move(*, plan, budget, **_kwargs):
+        seen["left"] = budget.seconds_left(10_000.0)
+        return {"table": plan.policy.table, "state": "moved", "moved_rows": 1, "moved_bytes": 1}
+
+    monkeypatch.setattr(off, "plan_table", plan)
+    monkeypatch.setattr(off, "move_table", move)
+    receipt = _run(store, cold, tmp_path, apply=True, budget_seconds=100.0, policies=(first,))
+    assert seen["left"] == pytest.approx(100.0 * (1.0 - off.PLAN_BUDGET_SHARE))
+    (row,) = receipt["tables"]
+    assert row["plan_seconds"] == 150.0 and row["wal_wait_seconds"] == 0.0
+    assert receipt["planning_seconds"] >= 150.0
+    assert receipt["moves"][0]["wal_wait_seconds"] == 0.0
