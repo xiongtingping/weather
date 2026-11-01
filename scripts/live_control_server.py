@@ -63,6 +63,7 @@ as a same-day round trip.
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import re
@@ -1346,6 +1347,7 @@ def native_order_confirmation(body: dict) -> tuple[bool, str]:
 STATION_DAY_CACHE_SEC = 20.0
 _STATION_DAY_CACHE: dict[str, tuple[float, dict]] = {}
 _STATION_DAY_LOCK = threading.Lock()
+STATION_DAY_LOCK_WAIT_SEC = 10.0
 
 
 def station_day(query: str) -> dict:
@@ -1361,7 +1363,18 @@ def station_day(query: str) -> dict:
     if str((params.get("token_only") or ["0"])[0]) == "1":
         # The panel's poll: one index seek a day, no build.
         return station_day_board.probability_token(station)
-    with _STATION_DAY_LOCK:
+    # One build at a time, but never an unbounded queue behind it: a build
+    # that hung on an untimed read on 2026-11-01 held this lock for tens of
+    # minutes, and every panel read and the order button's refresh waited on
+    # it (user 「点击"确认下单"无效」).  Past the wait the last good payload is
+    # served, marked stale; the order endpoints re-check the newest book.
+    if not _STATION_DAY_LOCK.acquire(timeout=STATION_DAY_LOCK_WAIT_SEC):
+        cached = _STATION_DAY_CACHE.get(station)
+        if cached:
+            return {**cached[1], "cache": "stale_busy",
+                    "cache_age_seconds": round(time.monotonic() - cached[0], 1)}
+        raise TimeoutError(f"station-day 正在重算，{STATION_DAY_LOCK_WAIT_SEC:.0f} 秒内没有让出")
+    try:
         cached = _STATION_DAY_CACHE.get(station)
         if (cached and not force and time.monotonic() - cached[0] < STATION_DAY_CACHE_SEC
                 and cached[1].get("token") == station_day_board.probability_token(station)["token"]):
@@ -1373,6 +1386,8 @@ def station_day(query: str) -> dict:
         return {**payload, "fleet_shape": _fleet_shape(force),
                 "skew_history": station_day_board.skew_history(),
                 "mode_agreement": station_day_board.mode_agreement_history(), "cache": "miss"}
+    finally:
+        _STATION_DAY_LOCK.release()
 
 
 # The fleet's mean-rung-against-mode tally rides on every panel read (user
@@ -1557,6 +1572,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    # `kill -USR1 <pid>` writes every thread's stack to the err log: the
+    # 2026-11-01 hang could only be seen as "a thread blocked in read".
+    import signal  # noqa: PLC0415
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"live control: http://127.0.0.1:{PORT}/api/state  (Ctrl-C 停止)")
     server.serve_forever()
