@@ -9,13 +9,8 @@
 		<string>/bin/bash</string>
 		<string>/Users/xiong/weather/scripts/ssot_cold_offload_sweep.sh</string>
 	</array>
-	<key>StartCalendarInterval</key>
-	<dict>
-		<key>Hour</key>
-		<integer>18</integer>
-		<key>Minute</key>
-		<integer>0</integer>
-	</dict>
+	<key>StartInterval</key>
+	<integer>10800</integer>
 	<key>RunAtLoad</key>
 	<false/>
 	<key>StandardErrorPath</key>

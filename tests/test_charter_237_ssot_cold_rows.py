@@ -921,9 +921,9 @@ def test_the_write_only_tables_have_no_reader() -> None:
         assert readers == [], table
 
 
-def test_the_lane_runs_once_a_day_on_its_own_clock() -> None:
-    """User 2026-10-29 「每 3 小时改为每天一次」「18:00」: one run a day at 18:00
-    local, and the file-retention job no longer runs a pass of its own."""
+def test_the_lane_runs_every_three_hours_on_its_own_clock() -> None:
+    """User 2026-11-01 「Back to every 3h」: once a day moved 0.06 GiB against
+    GiB-a-day growth; the file-retention job still runs no pass of its own."""
 
     import plistlib
 
@@ -931,10 +931,11 @@ def test_the_lane_runs_once_a_day_on_its_own_clock() -> None:
     assert "scripts/ssot_cold_offload.py" not in job
     with (ROOT / "launchd" / "com.weather.ssot_cold_offload.plist").open("rb") as handle:
         plist = plistlib.load(handle)
-    assert "StartInterval" not in plist
-    assert plist["StartCalendarInterval"] == {"Hour": 18, "Minute": 0}
+    assert "StartCalendarInterval" not in plist
+    assert plist["StartInterval"] == 10800
     sweep = (ROOT / "scripts" / "ssot_cold_offload_sweep.sh").read_text(encoding="utf-8")
     assert "scripts/ssot_cold_offload.py --apply" in sweep
+    assert "SWEEP_BUDGET_SEC:-2400}" in sweep
 
 
 def test_charter_237_names_the_lane() -> None:

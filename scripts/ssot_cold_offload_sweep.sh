@@ -1,8 +1,10 @@
 #!/bin/bash
-# Charter 272: the SSOT cold offload on its own clock -- once a day at 18:00
-# local since 2026-10-29 (user 「每 3 小时改为每天一次」「18:00」), with a
-# 3,600 s budget; it was every three hours at 2,400 s, and the file-retention
-# job's own pass at 05:20/17:20 is gone.  The history below is why it got a
+# Charter 272: the SSOT cold offload on its own clock -- every three hours,
+# 2,400 s a run.  Back from once a day (2026-11-01, user 「Back to every
+# 3h」): at one 18:00 run planning took 34 of the 60 minutes and the lane
+# moved 0.04-0.06 GiB a day (10-30/31) against 2.6-4.8 GiB of growth; at
+# eight runs a day it had moved 1.3-2.6 GiB a day.  The file-retention job's
+# own pass at 05:20/17:20 stays gone.  The history below is why it got a
 # clock of its own.
 #
 # It ran only inside the twice-daily NWP raw retention job, one 3,600 s
@@ -36,7 +38,7 @@ fi
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SSOT cold offload"
 nice -n 10 "$PY" scripts/ssot_cold_offload.py --apply \
   --cold-tier-root "$COLD_TIER_ROOT" \
-  --budget-seconds "${PM_SSOT_COLD_OFFLOAD_SWEEP_BUDGET_SEC:-3600}" \
+  --budget-seconds "${PM_SSOT_COLD_OFFLOAD_SWEEP_BUDGET_SEC:-2400}" \
   --receipt "$PROJECT_DIR/output/audits/ssot_cold_offload_latest.json" \
   || echo "  stopped early (moved batches are verified; the rest stay in the SSOT)"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done"
