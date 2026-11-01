@@ -49,10 +49,12 @@ BASELINE = "baseline"
 #: day is read from the run, and for each day the newest init that reached it is shown.
 FORECAST = "fcst"
 #: Two-driver forecast (user 2026-10-31 「驱动方案：上 IFS+GDPS 平均」): from then on each run holds
-#: one WRF per driver under ``<run>/ifs`` and ``<run>/gdps`` (nudged, same physics), and the day's
-#: forecast is the mean of the members' daily maxima.  Over 4 replayed inits (14 station-days) IFS
-#: alone ran +0.98 (MAE 1.35), GDPS -1.04 (1.44), their mean -0.03 (0.64):
-#: wrf_apps run/exp_fcstphys/results.json.  Earlier runs are single GFS runs read as before.
+#: one WRF per driver under ``<run>/ifs`` and ``<run>/gdps`` (nudged, same physics).  Over 4 replayed
+#: inits (14 station-days) IFS alone ran +0.98 (MAE 1.35), GDPS -1.04 (1.44), the mean of their
+#: maxima -0.03 (0.64): wrf_apps run/exp_fcstphys/results.json.  Since 2026-11-02 (user 「为什么不是
+#: IFS+GDPS」) the day's forecast is the peak of the members' hourly mean, the curve the board draws, as
+#: the IFS+GDPS nowcast: on the 8 closed days then on the board the two differ by <=0.21 (MAE 0.74 vs
+#: 0.75).  Earlier runs are single GFS runs read as before.
 FCST_MEMBERS = ("ifs", "gdps")
 #: Two-driver runs for the days before the switch (user 2026-10-31 「接回放+补 00/12Z」): the four
 #: replayed inits linked in and the 00/12Z cycles 10-26..10-30 re-run, under ``run/fcst_backfill``
@@ -512,8 +514,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             members = _members(d) if config in FCST_CONFIGS else []
             member_max: dict[str, float] = {}
             if members:
-                # Every member must reach the day; the mean series only places the peak, the
-                # maximum is the members' mean daily maximum (what the replay scored).
+                # Every member must reach the day; the day's maximum is the peak of the members'
+                # hourly mean, each member's own maximum kept beside it.
                 per = []
                 for md in members:
                     dom, files = _domain_files(md)
@@ -530,7 +532,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 if m is None:
                     continue
                 member_max = {md.name: round(mm["tmax_c"], 2) for md, _, mm in per}
-                m["tmax_c"] = round(sum(member_max.values()) / len(member_max), 2)
+                m["tmax_c"] = round(m["tmax_c"], 2)
                 m["peak_covered"] = all(mm["peak_covered"] for _, _, mm in per)
                 st = [_status(md, now.timestamp()) for md, _, _ in per]
                 status = "complete" if all(s == "complete" for s in st) else "running" if "running" in st else "stopped"

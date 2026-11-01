@@ -252,9 +252,11 @@ def test_issue_view_names_the_newest_scan() -> None:
     assert W._nowcast_view({})["last_scan_utc"] is None
 
 
-def test_two_driver_forecast_is_the_mean_of_its_members_daily_maxima(tmp_path: Path, monkeypatch) -> None:
+def test_two_driver_forecast_is_the_peak_of_its_members_hourly_mean(tmp_path: Path, monkeypatch) -> None:
     """User 2026-10-31 「驱动方案：上 IFS+GDPS 平均」: a run with ifs/ and gdps/ member runs stands
-    as the mean of the members' daily maxima, and a day only one member reached is not shown."""
+    as the peak of the members' hourly mean (2026-11-02 「为什么不是IFS+GDPS」: the curve drawn; here
+    19.5 at 06Z, below the mean of the maxima 20.0), each member's maximum kept, and a day only one
+    member reached is not shown."""
 
     d = tmp_path / "run" / "fcst" / "20261025_from_2026102200"
     for m in W.FCST_MEMBERS:
@@ -284,8 +286,8 @@ def test_two_driver_forecast_is_the_mean_of_its_members_daily_maxima(tmp_path: P
                     cache=Cache(), fcst_runs=runs)
     days = out["stations"]["ZUUU"]["days"]
     rec = days["2026-10-23"]["configs"]["fcst"]
-    assert rec["members"] == {"ifs": 22.0, "gdps": 18.0} and rec["tmax_c"] == 20.0
-    assert rec["peak_covered"] and rec["status"] == "complete" and rec["error_c"] == 0.0
+    assert rec["members"] == {"ifs": 22.0, "gdps": 18.0} and rec["tmax_c"] == 19.5 and rec["at_local"] == "14:00"
+    assert rec["peak_covered"] and rec["status"] == "complete" and rec["error_c"] == -0.5
     assert "fcst" not in (days.get("2026-10-24") or {}).get("configs", {})
     assert runs["ZUUU"]["2026-10-22T00:00:00Z"]["2026-10-23"]["members"] == {"ifs": 22.0, "gdps": 18.0}
 

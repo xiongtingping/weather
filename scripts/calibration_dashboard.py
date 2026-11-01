@@ -19004,7 +19004,7 @@ const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WR
 const WRF_LEAD = ["nowcast_sat", "fcst", "baseline"];
 function wrfTmaxPanel(){
   const W = D.wrf_tmax || {};
-  const head = `<h2 title="外置盘 WRF 项目：3 日预报自 10-30 起为 IFS 与 GDPS 两个驱动各跑一个 WRF、取两者日最高温的平均（之前 GFS 驱动），当天临近预报仍为 GFS 驱动；每轮取离站最近格点的 2 m 气温，按站点当地日取最高；对正式真值（宪章 225）。只显示，不进任何层">WRF 最高温预报</h2>`;
+  const head = `<h2 title="外置盘 WRF 项目：3 日预报自 10-30 起为 IFS 与 GDPS 两个驱动各跑一个 WRF、取两者逐时平均的最高（之前 GFS 驱动），当天临近预报仍为 GFS 驱动；每轮取离站最近格点的 2 m 气温，按站点当地日取最高；对正式真值（宪章 225）。只显示，不进任何层">WRF 最高温预报</h2>`;
   if(!W.available) return head + `<div class="muted">WRF 读数还没有：${h(W.error || "")}</div>`;
   if(W.state === "volume_missing") return head + `<div class="muted">外置盘未挂载：${h(W.root || "")}</div>`;
   const n = (v, d = 1) => v == null || !isFinite(v) ? "—" : (+v).toFixed(d);
@@ -19037,7 +19037,7 @@ function wrfTmaxPanel(){
     // 2026-10-31 「驱动方案：上 IFS+GDPS 平均」); each member's maximum is shown under it.
     const ahead = days.filter(d => d >= today && (S.days[d].configs || {}).fcst);
     const wk = d => "日一二三四五六"[new Date(`${d}T12:00:00Z`).getUTCDay()];
-    const aheadRow = !ahead.some(d => d > today) ? "" : `<div class="trend-t" style="margin-top:8px" title="每个时次（00/06/12/18Z）起报后约 8 小时，IFS 与 GDPS 各驱动一个 WRF（高空向各自驱动场松弛），跑到三天后；当天数字＝两者日最高温的平均（回放 14 站日：IFS 偏 +0.98、GDPS 偏 −1.04，平均偏 −0.03、平均误差 0.64°C）；物理与冻结的临近预报相同、不用卫星；箭头＝比上一轮">未来几天 · WRF 最高温 · IFS+GDPS 平均 · 每 6 小时更新</div>
+    const aheadRow = !ahead.some(d => d > today) ? "" : `<div class="trend-t" style="margin-top:8px" title="每个时次（00/06/12/18Z）起报后约 8 小时，IFS 与 GDPS 各驱动一个 WRF（高空向各自驱动场松弛），跑到三天后；当天数字＝两者逐时平均那条曲线的最高（回放 14 站日：IFS 偏 +0.98、GDPS 偏 −1.04，两者平均偏 −0.03、平均误差 0.64°C）；物理与冻结的临近预报相同、不用卫星；箭头＝比上一轮">未来几天 · WRF 最高温 · IFS+GDPS 平均 · 每 6 小时更新</div>
       <div class="grid g4">${ahead.filter(d => d > today).map(d => { const r = S.days[d].configs.fcst, E = S.days[d];
         const lead = d === today ? "今天" : `${Math.round((new Date(`${d}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 864e5)} 天后`;
         // Auto-updating (user 2026-10-22 「WRF应该是自动更新变化的」): a new run after every
@@ -19046,7 +19046,7 @@ function wrfTmaxPanel(){
         const runs = (E.fcst_history || []).slice(-4).map(x => `${String(x[0]).slice(11, 13)}Z ${n(x[1])}`).join(" → ");
         return big(`${h(d.slice(5))} 周${wk(d)} · ${lead}`, `${n(r.tmax_c)}°C${ch}`, "",
           `${String(r.init_utc || "").slice(5, 10)} ${String(r.init_utc || "").slice(11, 13)}Z 起报 · ${WRF_STATUS[r.status] || h(r.status || "")}${r.peak_covered ? ` · ${h(r.at_local)} 最高` : ` · 输出到 ${h(r.last_local || "")}`}${r.members ? ` · IFS ${n(r.members.ifs)} · GDPS ${n(r.members.gdps)}` : (E.gfs || {}).tmax_c == null ? "" : ` · GFS ${n(E.gfs.tmax_c)}`}${E.truth_c == null ? "" : ` · 实测 ${n(E.truth_c, 0)}`}`,
-          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}${runs ? `\n各轮：${runs}` : ""}${r.members ? "\nIFS 与 GDPS 两个驱动各跑一个 WRF，取两者日最高温的平均" : "\nGFS 驱动"}\n每个时次（00/06/12/18Z）起报后约 8 小时重跑一次`); }).join("")}</div>`;
+          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}${runs ? `\n各轮：${runs}` : ""}${r.members ? "\nIFS 与 GDPS 两个驱动各跑一个 WRF，取两者逐时平均的最高" : "\nGFS 驱动"}\n每个时次（00/06/12/18Z）起报后约 8 小时重跑一次`); }).join("")}</div>`;
     // Same-moment comparison (forward test): what each source said when the nowcast came out.
     const NS = S.nowcast_scores || {};
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
@@ -19432,16 +19432,16 @@ function wrfTmaxPanel(){
     // The forecast leads (user 2026-10-31 「突出预报，弱化谁更准」「预报突出今天（每次的更新）」): today
     // and its updates, today's nowcast cards and issue curve, then the coming days; who was nearest
     // is one line, its last-seven-days table in the fold.
-    // Tomorrow hour by hour (user 2026-11-02 「第二天（明天）的预报逐小时气温图呢？」): the newest three-day
-    // run's two members, each one's maximum labelled -- the card's number is the mean of those two.
+    // Tomorrow hour by hour (user 2026-11-02 「第二天（明天）的预报逐小时气温图呢？」「为什么不是IFS+GDPS」):
+    // the newest three-day run's IFS+GDPS mean, its peak the card's number, the two members thin beside it.
     const tmrDay = ahead.find(d => d > today), tmr = tmrDay ? S.days[tmrDay].configs.fcst : null;
     const tmrMs = (tmr || {}).member_series || {};
     const tmrChart = !tmr ? "" : hourChart(tmrDay, [
-        ...(tmrMs.ifs ? [{pts: tmrMs.ifs, c: KCOL.fcst, w: 2.2, name: "三日预报·IFS 成员", peak: true}] : []),
-        ...(tmrMs.gdps ? [{pts: tmrMs.gdps, c: KCOL.fcst, w: 2.2, dash: "6 3", name: "三日预报·GDPS 成员", peak: true}] : []),
-        ...(!tmrMs.ifs && !tmrMs.gdps && (tmr.series || []).length ? [{pts: tmr.series, c: KCOL.fcst, w: 2.2, name: "三日预报", peak: true}] : [])],
+        ...(tmrMs.ifs ? [{pts: tmrMs.ifs, c: KCOL.fcst, w: 1.2, dash: "2 3", name: "IFS 成员"}] : []),
+        ...(tmrMs.gdps ? [{pts: tmrMs.gdps, c: KCOL.fcst, w: 1.2, dash: "6 3", name: "GDPS 成员"}] : []),
+        ...((tmr.series || []).length ? [{pts: tmr.series, c: KCOL.fcst, w: 2.6, name: tmr.members ? "三日预报·IFS+GDPS 平均" : "三日预报", peak: true}] : [])],
       [], S.days[tmrDay].truth_c,
-      `明天 ${h(tmrDay.slice(5))} 周${wk(tmrDay)} 逐小时气温（当地时；${String(tmr.init_utc || "").slice(5, 10)} ${String(tmr.init_utc || "").slice(11, 13)}Z 起报的三日预报；鼠标悬停看该时刻各条曲线）：实线 IFS、虚线 GDPS，各标出自己的最高${tmr.members ? `，明天的数字 ${n(tmr.tmax_c)}° 是两者最高的平均` : ""}`,
+      `明天 ${h(tmrDay.slice(5))} 周${wk(tmrDay)} 逐小时气温（当地时；${String(tmr.init_utc || "").slice(5, 10)} ${String(tmr.init_utc || "").slice(11, 13)}Z 起报的三日预报；鼠标悬停看该时刻各条曲线）${tmr.members ? `：粗线＝IFS+GDPS 平均，它的最高 ${n(tmr.tmax_c)}° 就是明天的数字；细虚线＝两个成员（IFS ${n(tmr.members.ifs)} · GDPS ${n(tmr.members.gdps)}）` : ""}`,
       "明天逐小时气温", "三日预报还没算到明天");
     return todayHero + todayCards + issueRow + aheadRow + (tmrChart ? `<div class="card" style="margin-top:8px;border-left:4px solid ${KCOL.fcst}">${tmrChart}</div>` : "") + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + rankStrip + igStrip
       + `<details style="margin-top:10px"><summary class="muted">更多：最近几天各家对比、今天各家明细、各配置误差、逐日全表、回算</summary>`
