@@ -19259,8 +19259,12 @@ function wrfTmaxPanel(){
     const arrow = (d, fs) => d == null ? "" : ` <span class="${d > 0.05 ? "down" : d < -0.05 ? "up" : "flat"}"${fs ? ` style="font-size:${fs}px"` : ""}>${d > 0.05 ? "↑" : d < -0.05 ? "↓" : "→"}${n(Math.abs(d))}</span>`;
     const heroSub = nowV ? `${h(loc(nowV.ready_utc))} 临近预报·${nowIg ? `IFS+GDPS（IFS ${n((nowV.members_sat_c || {}).ifs)} · GDPS ${n((nowV.members_sat_c || {}).gdps)}）` : "GFS"}（卫星云）· 已与机场已报最高取大`
       : tf ? `${String(tf.init_utc || "").slice(5, 10)} ${String(tf.init_utc || "").slice(11, 13)}Z 起报${tf.members ? ` · IFS ${n(tf.members.ifs)} · GDPS ${n(tf.members.gdps)}` : ""} · ${WRF_STATUS[tf.status] || h(tf.status || "")}${tf.peak_covered ? ` · ${h(tf.at_local || "")} 最高` : ""}` : "";
+    // Each update against the previous one of its own kind (user 2026-11-01 「为什么是这种，有点奇怪」: the two
+    // nowcast routes alternate, ~19.9 and ~20.4, and chained in time they read as a ±0.5 zigzag); a route's
+    // first version against the update before it, whatever its kind.
+    const prevOf = u => { const i = ups.indexOf(u), same = ups.slice(0, i).filter(x => x.kind === u.kind); return same.length ? same[same.length - 1] : i ? ups[i - 1] : null; };
     const shownUps = ups.slice(-14);
-    const chips = shownUps.map((u, i) => { const prev = i ? shownUps[i - 1] : ups[ups.length - shownUps.length - 1];
+    const chips = shownUps.map((u, i) => { const prev = prevOf(u);
       return `<span class="mono" style="white-space:nowrap;padding:2px 8px;border-radius:6px;border:1px solid ${KCOL[u.kind]}${i === shownUps.length - 1 ? ";font-weight:700" : ""}" title="${h(`${u.label} · ${KWORD[u.kind]} · ${n(u.v, 2)}°C`)}">${h(u.label)} <b>${n(u.v)}°</b>${arrow(prev ? u.v - prev.v : null)}</span>`; }).join("");
     // One slot per update (user 2026-10-31 「但是我点上去 数据不对啊」): the shared time chart's hover
     // carries every line's last value forward to the cursor and read the earlier run as the latest;
@@ -19275,7 +19279,7 @@ function wrfTmaxPanel(){
       const X = i => pl + (i + 0.5) * (W - pl - pr) / slots.length, Y = v => pt + (hi - v) * (Hh - pt - pb) / (hi - lo);
       let g = "";
       for(let v = Math.ceil(lo / stp) * stp; v <= hi; v += stp) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}°</text>`;
-      ups.forEach((u, i) => { if(i) g += `<line x1="${X(si(ups[i - 1]))}" y1="${Y(ups[i - 1].v)}" x2="${X(si(u))}" y2="${Y(u.v)}" stroke="${ups[i - 1].kind === u.kind ? KCOL[u.kind] : "var(--muted)"}" stroke-width="${ups[i - 1].kind !== u.kind ? 1 : u.kind === "gfs" ? 1.4 : 2.4}"${ups[i - 1].kind !== u.kind ? ' stroke-dasharray="2 3"' : u.kind === "gfs" ? ' stroke-dasharray="4 3"' : ""}/>`; });
+      ups.forEach(u => { const q = prevOf(u); if(q) g += `<line x1="${X(si(q))}" y1="${Y(q.v)}" x2="${X(si(u))}" y2="${Y(u.v)}" stroke="${q.kind === u.kind ? KCOL[u.kind] : "var(--muted)"}" stroke-width="${q.kind !== u.kind ? 1 : u.kind === "gfs" ? 1.4 : 2.4}"${q.kind !== u.kind ? ' stroke-dasharray="2 3"' : u.kind === "gfs" ? ' stroke-dasharray="4 3"' : ""}/>`; });
       bfUps.forEach((u, i) => { if(i) g += `<line x1="${X(si(bfUps[i - 1]))}" y1="${Y(bfUps[i - 1].v)}" x2="${X(si(u))}" y2="${Y(u.v)}" stroke="${KCOL.bf}" stroke-width="1.6" stroke-dasharray="5 4" opacity=".8"/>`; });
       if(TD.truth_c != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(TD.truth_c)}" y2="${Y(TD.truth_c)}" stroke="var(--text)" stroke-dasharray="5 3"/><text x="${W - pr}" y="${Y(TD.truth_c) - 4}" text-anchor="end" font-size="10.5" fill="var(--text)">实测 ${n(TD.truth_c, 0)}°</text>`;
       slots.forEach((t, k) => { const u = pts.find(x => String(x.t) === t), [d1, d2] = u.label.split(" ");
@@ -19286,11 +19290,11 @@ function wrfTmaxPanel(){
           <rect x="${X(si(u)) - 3.2}" y="${Y(u.v) - 3.2}" width="6.4" height="6.4" fill="var(--bg,#fff)" stroke="${KCOL.bf}" stroke-width="1.6" stroke-dasharray="2 1.5"/>
           <text x="${X(si(u))}" y="${Y(u.v) + 15}" text-anchor="middle" font-size="9.5" fill="${KCOL.bf}">${n(u.v)}</text></g>`; });
       ups.forEach((u, i) => { const last1 = i === ups.length - 1;
-        g += `<g><title>${h(`${u.label} · ${KWORD[u.kind]} · 报今天最高 ${n(u.v, 2)}°C${i ? ` · 比上一次 ${sg(u.v - ups[i - 1].v, 2)}` : ""}`)}</title>
+        g += `<g><title>${h(`${u.label} · ${KWORD[u.kind]} · 报今天最高 ${n(u.v, 2)}°C${prevOf(u) ? ` · 比${prevOf(u).kind === u.kind ? "本路" : ""}上一次 ${sg(u.v - prevOf(u).v, 2)}` : ""}`)}</title>
           <circle cx="${X(si(u))}" cy="${Y(u.v)}" r="${last1 ? 5 : 3.6}" fill="${last1 ? KCOL[u.kind] : "var(--bg,#fff)"}" stroke="${KCOL[u.kind]}" stroke-width="2"/>
           <text x="${X(si(u))}" y="${Y(u.v) - 8}" text-anchor="middle" font-size="${last1 ? 12 : 10.5}" font-weight="${last1 ? 700 : 400}" fill="var(--text)">${n(u.v)}</text></g>`; });
       return `<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天最高温的逐次预报">${g}</svg>
-        <div class="muted" style="font-size:11.5px">每个点＝一次更新报的今天最高温；横轴＝三日预报的起报时次（UTC）或当天临近预报的出数时间（当地）；实心点＝最新；${bfUps.length ? "青色虚线方块＝IFS+GDPS 补跑过去时次（10-30 前实时为 GFS 驱动，补跑只作对照、不计前向成绩）；" : ""}悬停看与上一次的差</div>`;
+        <div class="muted" style="font-size:11.5px">每个点＝一次更新报的今天最高温；横轴＝三日预报的起报时次（UTC）或当天临近预报的出数时间（当地）；实心点＝最新；每路只连自己的上一版（两路临近预报各成一条线）；${bfUps.length ? "青色虚线方块＝IFS+GDPS 补跑过去时次（10-30 前实时为 GFS 驱动，补跑只作对照、不计前向成绩）；" : ""}悬停看与上一次的差</div>`;
     })();
     // Today hour by hour (user 2026-11-01 「增加当天的曲线图」「曲线是当天临近预报，不是3日预报」): the
     // same-day nowcasts -- the newest of each route bold, the IFS+GDPS route's earlier versions faint --
@@ -19349,9 +19353,9 @@ function wrfTmaxPanel(){
     })();
     const todayHero = heroV == null && !ups.length && !bfUps.length ? "" : `<div class="card" style="border-left:4px solid ${KCOL[nowV ? (nowIg ? "nowcast_ig" : "nowcast") : "fcst"]};margin-top:4px">
       <div class="muted">今天 ${h(today.slice(5))} 周${wk(today)} · WRF 最高温预报</div>
-      <div class="mono" style="font-size:46px;font-weight:800;line-height:1.1">${n(heroV)}°C${arrow(ups.length > 1 ? ups[ups.length - 1].v - ups[ups.length - 2].v : null, 22)}</div>
+      <div class="mono" style="font-size:46px;font-weight:800;line-height:1.1">${n(heroV)}°C${arrow(ups.length > 1 && prevOf(ups[ups.length - 1]) ? ups[ups.length - 1].v - prevOf(ups[ups.length - 1]).v : null, 22)}</div>
       <div class="muted mono">${heroSub}${TD.truth_c == null ? "" : ` · 实测 ${n(TD.truth_c, 0)}°C`}</div>
-      <div class="muted" style="margin-top:10px;font-size:12px" title="三日预报按起报时次排（起报后约 8 小时出数），临近预报按出数时间；箭头＝比上一次">每次更新 · ${ups.length} 次${ups.length > shownUps.length ? `（显示最近 ${shownUps.length} 次）` : ""} · ${["gfs", "fcst", "nowcast", "nowcast_ig"].filter(k => ups.some(u => u.kind === k)).map(k => `<span style="color:${KCOL[k]}">■</span> ${KWORD[k]}`).join("　")}${bfUps.length ? `　<span style="color:${KCOL.bf}">□</span> ${KWORD.bf}（${bfUps.length} 次，只在图上）` : ""}</div>
+      <div class="muted" style="margin-top:10px;font-size:12px" title="三日预报按起报时次排（起报后约 8 小时出数），临近预报按出数时间；箭头＝比同一路的上一次（两路临近预报各比各的）">每次更新 · ${ups.length} 次${ups.length > shownUps.length ? `（显示最近 ${shownUps.length} 次）` : ""} · ${["gfs", "fcst", "nowcast", "nowcast_ig"].filter(k => ups.some(u => u.kind === k)).map(k => `<span style="color:${KCOL[k]}">■</span> ${KWORD[k]}`).join("　")}${bfUps.length ? `　<span style="color:${KCOL.bf}">□</span> ${KWORD.bf}（${bfUps.length} 次，只在图上）` : ""}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:12.5px">${chips}</div>
       ${upChart ? `<div style="margin-top:8px">${upChart}</div>` : ""}${dayChart}</div>`;
     // The forecast leads (user 2026-10-31 「突出预报，弱化谁更准」「预报突出今天（每次的更新）」): today
