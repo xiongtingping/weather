@@ -73,6 +73,7 @@ def _production_store(path: Path) -> None:
     conn.executescript(shadow_objective.SHADOW_OBJECTIVE_DDL)
     conn.executescript(portfolio_inventory.PORTFOLIO_INVENTORY_DDL)
     serving_arithmetic.ensure_schema(conn)
+    conn.executescript(ssot.REPUBLISHER_ENSEMBLE_DDL)
     conn.commit()
     conn.close()
 
@@ -1218,13 +1219,42 @@ def test_a_capped_table_stops_at_its_cap_and_the_rest_of_the_run_goes_on(
     assert json.loads(ledger)["max_batches_per_run"] == 2
 
 
-def test_the_member_run_table_is_the_only_capped_one() -> None:
-    member = off.POLICY_BY_TABLE["calibration_native_ensemble_historical_member_run"]
-    assert member.max_batches_per_run == off.MEMBER_RUN_MAX_BATCHES_PER_RUN == 100
+MEMBER_TABLES = (
+    "calibration_native_ensemble_historical_member_run",
+    "calibration_republisher_ensemble_historical_member_run",
+    "calibration_republisher_ensemble_member_run",
+)
+
+
+def test_the_member_run_tables_are_the_only_capped_ones() -> None:
+    for table in MEMBER_TABLES:
+        assert off.POLICY_BY_TABLE[table].max_batches_per_run == off.MEMBER_RUN_MAX_BATCHES_PER_RUN == 100
     assert all(
         policy.max_batches_per_run is None
-        for policy in off.POLICIES if policy.table != member.table
+        for policy in off.POLICIES if policy.table not in MEMBER_TABLES
     )
+
+
+def test_the_republisher_members_take_the_native_window_and_the_archive_respects_it() -> None:
+    """User 2026-11-01 「Add rules」: both republisher member tables leave past the
+    native member window, which also covers the newest 64 truths the worker hashes."""
+
+    from bayes_basket_target import production_worker
+
+    for table in MEMBER_TABLES[1:]:
+        policy = off.POLICY_BY_TABLE[table]
+        assert policy.hot_days == off.MEMBER_RUN_HOT_DAYS
+        assert policy.keep_latest[0].key == ("ensemble_system_id", "station_id")
+    assert off.MEMBER_RUN_HOT_DAYS > production_worker.MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION
+    tree = ast.parse(
+        (ROOT / "scripts" / "capture_open_meteo_historical_ensemble_archive.py").read_text(encoding="utf-8")
+    )
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "assert_within_hot_window"
+        and isinstance(node.args[0], ast.Constant) and node.args[0].value == MEMBER_TABLES[1]
+    ]
+    assert calls
 
 
 def test_the_row_days_cache_plans_the_same_rows_and_reads_the_scores_once(

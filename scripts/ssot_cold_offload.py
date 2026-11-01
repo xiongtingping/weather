@@ -959,6 +959,57 @@ POLICIES += (
             ),
         ),
     ),
+    # 2026-11-01 (user 「Add rules」): the Open-Meteo republisher members, 4.0
+    # GiB with no rule while the store climbed toward its ceiling.  The
+    # retrospective archive feeds the same weights/OOS fit as the native
+    # members (training rows only, ROLLING_TRAIN_WINDOW_DAYS before the
+    # holdout), so it takes the native window.  The daily d2 capture writes
+    # today's target day only; the historical archive capture refuses days
+    # older than the window; the contract append re-derives from rows still
+    # here.
+    TablePolicy(
+        table="calibration_republisher_ensemble_historical_member_run",
+        time_column="target_local_date",
+        hot_days=MEMBER_RUN_HOT_DAYS,
+        max_batches_per_run=MEMBER_RUN_MAX_BATCHES_PER_RUN,
+        readers=(
+            "native_ensemble_oos (weights and OOS): a station's training rows, fitted on "
+            "ROLLING_TRAIN_WINDOW_DAYS before the key's holdout; production_worker "
+            "_open_meteo_d2_already_captured: the target day being captured; "
+            "append_open_meteo_historical_oos_contracts (by hand): successors of the rows it "
+            "finds here.  capture_open_meteo_historical_ensemble_archive refuses days older "
+            "than this window."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("ensemble_system_id", "station_id"), order=("target_local_date",), count=1,
+                why="a reader of a system's newest member at a station finds it whatever its age",
+            ),
+        ),
+    ),
+    # The live republisher members.  production_worker lists candidate
+    # stations from them, the closed days still without truth, and hashes
+    # each station's newest MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION (64)
+    # accepted truths -- all inside the member window while capture runs
+    # daily.  native_ensemble_store writes the snapshot being taken.
+    TablePolicy(
+        table="calibration_republisher_ensemble_member_run",
+        time_column="target_local_date",
+        hot_days=MEMBER_RUN_HOT_DAYS,
+        max_batches_per_run=MEMBER_RUN_MAX_BATCHES_PER_RUN,
+        readers=(
+            "production_worker _candidate_ensemble_station_ids / "
+            "_candidate_ensemble_scopes_without_truth / the truth identity hash (newest 64 "
+            "accepted truths per station); native_ensemble_store: the snapshot being written; "
+            "audit_aifs_model_ingress (by hand): row counts."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("ensemble_system_id", "station_id"), order=("target_local_date",), count=1,
+                why="a station stays a candidate and keeps its newest member whatever its age",
+            ),
+        ),
+    ),
     # Charter 237 amendment (2026-10-09): the decisions' training facts.
     # Production reads the current station-day, a fact by id / scope key /
     # cycle, or windows of 28 event days (valuation, realisation, posterior);

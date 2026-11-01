@@ -593,6 +593,14 @@ def main() -> int:
     today = datetime.now(timezone.utc).date()
     if end >= today:
         raise RuntimeError("open_meteo_archive_forward_date_forbidden")
+    # Charter 237: days past the member table's hot window live on the cold
+    # tier; writing one back would leave it in both places.
+    from scripts.ssot_cold_offload import OffloadRefused, assert_within_hot_window  # noqa: PLC0415
+
+    try:
+        assert_within_hot_window("calibration_republisher_ensemble_historical_member_run", args.start_date)
+    except OffloadRefused as exc:
+        raise SystemExit(str(exc)) from exc
     dates = [
         (start + timedelta(days=i)).isoformat()
         for i in range((end - start).days + 1)
