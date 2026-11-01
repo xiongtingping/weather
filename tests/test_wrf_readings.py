@@ -392,3 +392,24 @@ def test_ifs_gdps_nowcast_is_its_own_series_scored_with_the_gfs_route_at_noon(tm
     assert sc["sat_obs_c"]["bias_c"] == -0.5 and sc["gfs_sat_obs_c"]["bias_c"] == -3.0
     assert sc["at_utc"] == "04:00" and sc["ig_vs_gfs"] == {"n": 1}
     assert S["nowcast_scores"] == {}  # the frozen GFS issue's own score is untouched
+
+
+def test_today_chart_series_ig_mean_by_hour_and_reports_over_the_local_day(tmp_path: Path) -> None:
+    """The today card's hourly chart (user 2026-11-01 「增加当天的曲线图」): the IFS+GDPS route's
+    members averaged hour by hour where both have the hour, and the airport's reports over the
+    local day, a re-sent report counted once."""
+
+    rec = {"day": "2026-11-01", "wrf_sat_members": {"ifs": {"hourly": {"01": 18.0, "02": 20.0}},
+                                                   "gdps": {"hourly": {"01": 17.0, "03": 21.0}}}}
+    assert W._ig_series(rec) == [["2026-11-01T01:00:00Z", 17.5]]
+    db = tmp_path / "archive.db"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE reported_trajectory_observations (station_id, valid_at, reported_temperature_c)")
+    c.executemany("INSERT INTO reported_trajectory_observations VALUES (?,?,?)", [
+        ("ZUUU", "2026-10-31T15:30:00.000Z", 15), ("ZUUU", "2026-10-31T16:00:00.000Z", 16),
+        ("ZUUU", "2026-11-01T02:00:00.000Z", 18), ("ZUUU", "2026-11-01T02:00:00.000Z", 19),
+        ("ZUUU", "2026-11-01T16:00:00.000Z", 14), ("KSEA", "2026-11-01T02:00:00.000Z", 9)])
+    c.commit(); c.close()
+    obs = W._obs_series("ZUUU", "2026-11-01", ZoneInfo("Asia/Shanghai"), db)
+    assert obs == [["2026-10-31T16:00:00Z", 16.0], ["2026-11-01T02:00:00Z", 19.0]]
+    assert W._obs_series("ZUUU", "2026-11-01", ZoneInfo("Asia/Shanghai"), tmp_path / "none.db") == []

@@ -84,6 +84,8 @@ REPLAY_LOG = "replay/log.jsonl"
 #: cloud, one record per scan in ``run/nowcast_ig/log.jsonl``.  Its own forward series: scored, with
 #: the GFS route beside it, on what each said as of IG_SCORE_AT_UTC (12:00 local, before the peak).
 NOWCAST_IG_LOG = "nowcast_ig/log.jsonl"
+#: The observation archive (reported_trajectory_observations): the airport's reports for the today chart.
+ARCHIVE_DB = ROOT / "data" / "archive.db"
 IG_SCORE_AT_UTC = "04:00"
 REPLAY_ARMS = ("sat", "ctl", "sat_aer")
 #: The hindcast experiments' results frozen before their files were archived (user
@@ -363,6 +365,39 @@ def nowcast_ig_updates(root: Path = WRF_ROOT) -> dict[str, list[dict[str, Any]]]
     return out
 
 
+def _ig_series(rec: dict[str, Any]) -> list[list[Any]]:
+    """The mean of the members' satellite-run T2 by UTC hour, where every member has the hour."""
+
+    per = [((v or {}).get("hourly") or {}) for v in (rec.get("wrf_sat_members") or {}).values()]
+    if not per:
+        return []
+    hours = sorted(set.intersection(*(set(h) for h in per)))
+    return [[f"{rec['day']}T{hh}:00:00Z", round(sum(float(h[hh]) for h in per) / len(per), 2)] for hh in hours]
+
+
+def _obs_series(station: str, day: str, zone: ZoneInfo, path: Path = ARCHIVE_DB) -> list[list[Any]]:
+    """The station's reported temperatures over its local day, from the observation archive
+    (read only; empty when it cannot be read)."""
+
+    start = datetime.fromisoformat(day).replace(tzinfo=zone).astimezone(timezone.utc)
+    lo, hi = start.strftime("%Y-%m-%dT%H:%M"), (start + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+        try:
+            rows = conn.execute(
+                "SELECT valid_at, reported_temperature_c FROM reported_trajectory_observations"
+                " WHERE station_id=? AND valid_at>=? AND valid_at<? AND reported_temperature_c IS NOT NULL"
+                " ORDER BY valid_at", (station, lo, hi)).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return []
+    out: dict[str, float] = {}
+    for t, v in rows:
+        out[str(t)[:16]] = float(v)   # a re-sent report: the last one
+    return [[f"{t}:00Z", v] for t, v in sorted(out.items())]
+
+
 def _as_of(recs: list[dict[str, Any]], at: str) -> dict[str, Any] | None:
     """The newest record out by ``at`` (ISO UTC), records sorted by ready time."""
 
@@ -503,6 +538,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
             if member_max:
                 rec["members"] = member_max
+                # each member's own hourly curve, for the today card's chart
+                rec["member_series"] = {md.name: [[t, round(v, 2)] for t, v in mm["series"]] for md, _, mm in per}
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
             # The driving GFS: a newer forecast init replaces an older one's for the day.  A day
             # with no baseline run (10-21, run only for the hindcast table, user 2026-10-22
@@ -619,7 +656,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             entry["nowcast_ig_updates"] = [
                 {**_nowcast_view(r), "source_cycle_utc": r.get("source_cycle_utc"),
                  "members_sat_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_sat_members") or {}).items()},
-                 "members_ctl_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_ctl_members") or {}).items()}}
+                 "members_ctl_c": {m: (v or {}).get("tmax_c") for m, v in (r.get("wrf_ctl_members") or {}).items()},
+                 "series": _ig_series(r)}
                 for r in recs]
             t = entry["truth_c"]
             at = f"{day}T{IG_SCORE_AT_UTC}:00Z"
@@ -636,6 +674,13 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 ig_errs.setdefault("gfs_sat_obs_c", []).append(float(gv) - t)
                 if v["sat_obs_c"] is not None:
                     ig_pairs.append(abs(float(v["sat_obs_c"]) - t) - abs(float(gv) - t))
+        # The airport's reports through today (the today card's hourly chart): yesterday on.
+        if zone is not None:
+            since = (now.astimezone(zone) - timedelta(days=1)).date().isoformat()
+            for day in [d for d in days if d >= since]:
+                obs = _obs_series(station, day, zone)
+                if obs:
+                    days[day]["obs_series"] = obs
         # The replay segment: each arm with the observed maximum so far, the market and the
         # served belief as of the nominal issue, scored on their own; and each arm paired
         # against the sat arm on the same days.
