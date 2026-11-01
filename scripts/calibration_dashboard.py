@@ -19421,8 +19421,15 @@ function wrfTmaxPanel(){
         ...(gfsSer && gfsSer.length ? [{pts: gfsSer, c: KCOL.nowcast, w: 2.4, name: `临近预报·GFS 最新一版${gfsLast ? `（${loc(gfsLast.ready_utc)}）` : ""}`, peak: true}] : []),
         ...(igLast && (igLast.series || []).length ? [{pts: igLast.series, c: KCOL.nowcast_ig, w: 2.4, name: `临近预报·IFS+GDPS 最新一版（${loc(igLast.ready_utc)}）`, peak: true}] : []),
       ];
-      return hourChart(today, lines, TD.obs_series || [], TD.truth_c,
-        "今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：彩色＝临近预报算的每小时气温，黑点＝机场实测", "今天逐小时气温", "今天的临近预报还没出");
+      // before the day's first nowcast (it is out about 10:00 local) the day's three-day forecast stands,
+      // drawn as tomorrow's is, so the card is never without a curve (user 2026-11-02 「今日的逐时曲线怎么不见了」)
+      const tms = (tf || {}).member_series || {}, early = !lines.length && tf && (tf.series || []).length;
+      if(early) lines.push(...(tms.ifs ? [{pts: tms.ifs, c: KCOL.fcst, w: 1.2, dash: "2 3", name: "IFS 成员"}] : []),
+        ...(tms.gdps ? [{pts: tms.gdps, c: KCOL.fcst, w: 1.2, dash: "6 3", name: "GDPS 成员"}] : []),
+        {pts: tf.series, c: KCOL.fcst, w: 2.6, name: tf.members ? "三日预报·IFS+GDPS 平均" : "三日预报", peak: true});
+      return hourChart(today, lines, TD.obs_series || [], TD.truth_c, early
+        ? `今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：临近预报约 10 点出来，之前先看 ${String(tf.init_utc || "").slice(5, 10)} ${String(tf.init_utc || "").slice(11, 13)}Z 起报的三日预报——粗线＝IFS+GDPS 平均，细虚线＝两个成员；黑点＝机场实测`
+        : "今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：彩色＝临近预报算的每小时气温，黑点＝机场实测", "今天逐小时气温", "今天的临近预报还没出");
     })();
     const todayHero = heroV == null && !ups.length && !bfUps.length ? "" : `<div class="card" style="border-left:4px solid ${KCOL[nowV ? (nowIg ? "nowcast_ig" : "nowcast") : "fcst"]};margin-top:4px">
       <div class="muted">今天 ${h(today.slice(5))} 周${wk(today)} · WRF 最高温预报</div>
