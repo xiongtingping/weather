@@ -19282,9 +19282,20 @@ function wrfTmaxPanel(){
       ups.forEach(u => { const q = prevOf(u); if(q) g += `<line x1="${X(si(q))}" y1="${Y(q.v)}" x2="${X(si(u))}" y2="${Y(u.v)}" stroke="${q.kind === u.kind ? KCOL[u.kind] : "var(--muted)"}" stroke-width="${q.kind !== u.kind ? 1 : u.kind === "gfs" ? 1.4 : 2.4}"${q.kind !== u.kind ? ' stroke-dasharray="2 3"' : u.kind === "gfs" ? ' stroke-dasharray="4 3"' : ""}/>`; });
       bfUps.forEach((u, i) => { if(i) g += `<line x1="${X(si(bfUps[i - 1]))}" y1="${Y(bfUps[i - 1].v)}" x2="${X(si(u))}" y2="${Y(u.v)}" stroke="${KCOL.bf}" stroke-width="1.6" stroke-dasharray="5 4" opacity=".8"/>`; });
       if(TD.truth_c != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(TD.truth_c)}" y2="${Y(TD.truth_c)}" stroke="var(--text)" stroke-dasharray="5 3"/><text x="${W - pr}" y="${Y(TD.truth_c) - 4}" text-anchor="end" font-size="10.5" fill="var(--text)">实测 ${n(TD.truth_c, 0)}°</text>`;
-      slots.forEach((t, k) => { const u = pts.find(x => String(x.t) === t), [d1, d2] = u.label.split(" ");
-        g += `<text x="${X(k)}" y="${Hh - pb + 13}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${h(d1)}</text>
-          <text x="${X(k)}" y="${Hh - pb + 25}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${h(d2 || "")}</text>`; });
+      // Axis (user 2026-11-01 「时间轴这样表示很奇怪」): the time alone under each point -- a run's cycle always,
+      // the nowcasts' issue times every n-th, counted back from the newest, when they would touch -- and below it each group once, centred over its points
+      // and fenced off: a three-day run's init date (its cycle in UTC above), 今天 for the nowcasts (their
+      // local issue time above).
+      const sw = (W - pl - pr) / slots.length, every = Math.max(1, Math.ceil(27 / sw));
+      const lab = slots.map(t => { const [d1, d2] = pts.find(x => String(x.t) === t).label.split(" ");
+        return {grp: d1 === "今天" ? "今天（当地出数时刻）" : `${+d1.slice(3)}日（UTC 起报）`, tm: d2 || ""}; });
+      lab.forEach((l, k) => { if(!l.grp.startsWith("今天") || (slots.length - 1 - k) % every === 0)
+        g += `<text x="${X(k)}" y="${Hh - pb + 13}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${h(l.tm)}</text>`; });
+      const groups = lab.reduce((a, l, k) => { if(!a.length || a[a.length - 1].grp !== l.grp) a.push({grp: l.grp, a: k, b: k}); else a[a.length - 1].b = k; return a; }, []);
+      groups.forEach((q, i) => {
+        if(i) g += `<line x1="${X(q.a) - sw / 2}" x2="${X(q.a) - sw / 2}" y1="${Hh - pb + 3}" y2="${Hh - 2}" stroke="var(--line)"/>`;
+        const span = (q.b - q.a + 1) * sw, txt = span >= 70 ? q.grp : q.grp.replace(/（.*）/, "");
+        g += `<text x="${(X(q.a) + X(q.b)) / 2}" y="${Hh - pb + 27}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${h(txt)}</text>`; });
       bfUps.forEach((u, i) => { const prev = bfUps[i - 1];
         g += `<g><title>${h(`${u.label} · ${KWORD.bf} · 报今天最高 ${n(u.v, 2)}°C${prev ? ` · 比上一次补跑 ${sg(u.v - prev.v, 2)}` : ""}`)}</title>
           <rect x="${X(si(u)) - 3.2}" y="${Y(u.v) - 3.2}" width="6.4" height="6.4" fill="var(--bg,#fff)" stroke="${KCOL.bf}" stroke-width="1.6" stroke-dasharray="2 1.5"/>
