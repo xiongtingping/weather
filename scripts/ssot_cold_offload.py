@@ -285,6 +285,30 @@ class KeepDecisionEnvelopes:
 
     scope_index: str
     why: str
+    #: The column holding the envelope's ``content_sha256`` the decision names
+    #: (the bridge history keeps it as ``envelope_content_sha256``).
+    hash_column: str = "content_sha256"
+
+
+@dataclass(frozen=True)
+class ChildRows:
+    """Rows of ``table`` that belong to a moved row and leave with it.
+
+    For a side table with no time of its own whose rows are written in the
+    parent's transaction and read through the parent (the bridge's bucket
+    probabilities, by ``history_id``).  Each batch copies its parents'
+    children into the child's own cold file and verifies them, and deletes
+    them in the parent's SSOT transaction, re-read first: a child that
+    changed since its copy stops the table.  A restore puts them back with
+    their parents.
+    """
+
+    table: str
+    #: The child's column naming the parent.
+    column: str
+    #: The parent's column it names.
+    parent_column: str
+    why: str
 
 
 @dataclass(frozen=True)
@@ -377,6 +401,8 @@ class TablePolicy:
     #: deleted) into the same cold file so an offline reader can expand a
     #: cold row without the SSOT.
     mirror_tables: tuple[str, ...] = ()
+    #: Side tables whose rows leave with their parent row (:class:`ChildRows`).
+    children: tuple[ChildRows, ...] = ()
     #: At most this many batches leave per run (None = until the budget).
     #: For a table whose rows are tiny (hundreds of bytes) every batch costs
     #: a write lock and a round trip to the volume for almost no space back,
@@ -413,6 +439,7 @@ class TablePolicy:
             },
             "keep_decision_envelopes": None if self.keep_decision_envelopes is None else {
                 "scope_index": self.keep_decision_envelopes.scope_index,
+                "hash_column": self.keep_decision_envelopes.hash_column,
                 "why": self.keep_decision_envelopes.why,
             },
             "keep_foreign_key_refs": self.keep_foreign_key_refs,
@@ -425,6 +452,10 @@ class TablePolicy:
                 "why": self.move_superseded.why,
             },
             "mirror_tables": list(self.mirror_tables),
+            "children": [
+                {"table": c.table, "column": c.column, "parent_column": c.parent_column, "why": c.why}
+                for c in self.children
+            ],
             "max_batches_per_run": self.max_batches_per_run,
         }
 
@@ -590,6 +621,39 @@ def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
         else:
             days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
     return min(days) if days else None
+
+
+def bridge_reader_floor(conn: sqlite3.Connection) -> str | None:
+    """The bridge history's own floor: its readers read rows, not payloads.
+
+    The envelope's floor (``evidence_anchor_floor``) may pass a frozen day
+    because ``serving_payload_cache`` holds that day's payloads, but the
+    width and off-centre samplers still find the day's decisions by walking
+    the bridge history from their anchor -- so here the floor is the anchor
+    itself, less the decision-to-event margin.  The board's traded
+    calibration (``bucket_calibration_rows``) reads every settled station-day
+    since ``TRADED_CALIBRATION_SINCE``.  No anchor means an unbounded read,
+    so nothing moves.
+    """
+
+    from bayes_basket_target.board_readings import TRADED_CALIBRATION_SINCE  # noqa: PLC0415
+    from bayes_basket_target.center_width_store import (  # noqa: PLC0415
+        CENTER_WIDTH_SERVED_STAGES,
+        evidence_anchor,
+    )
+    from bayes_basket_target.off_centre_claim_store import SERVED_STAGES as OFF_CENTRE_STAGES  # noqa: PLC0415
+
+    days = [str(TRADED_CALIBRATION_SINCE)]
+    for stage in sorted(set(CENTER_WIDTH_SERVED_STAGES) | set(OFF_CENTRE_STAGES)):
+        try:
+            anchor = evidence_anchor(conn, stage=stage)
+        except sqlite3.Error as exc:
+            raise OffloadRefused(f"evidence_anchor_unreadable:{stage}") from exc
+        moment = _instant(anchor) if anchor else None
+        if moment is None:
+            raise OffloadRefused(f"evidence_anchor_missing:{stage}")
+        days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
+    return min(days)
 
 
 def _cross_activation_generations(conn: sqlite3.Connection) -> dict[tuple, int]:
@@ -1133,6 +1197,56 @@ POLICIES += (
             ),
         ),
     ),
+    # 2026-11-01 (user 「Do bridge tables」): the probability bridge history
+    # and its bucket probabilities, 4.6 GiB with no rule.  Production reads
+    # the current station-day (served_belief_row, the ladder, the lanes, the
+    # bridge's own materialisation) or the newest committed row; the width,
+    # off-centre and band samplers walk it from their evidence anchor; the
+    # board's traded calibration reads every settled day since 09-06;
+    # live_book re-reads the ladder each live decision's seat was priced on.
+    # The bucket probabilities have no time of their own and leave with
+    # their history row.
+    TablePolicy(
+        table="basket_probability_bridge_history",
+        time_column="event_date",
+        hot_days=max(BOARD_SEAT_LOOKBACK_DAYS, VALUATION_WINDOW_DAYS) + 2,
+        readers=(
+            "production (stage_authority.served_belief_row, probability_bridge, station_day_ladder, "
+            "copy_follow, serving_arithmetic, the lanes): the current station-day or the newest "
+            "committed row; center_width / off_centre_claim / band_reliability samplers and "
+            "first_p1_decisions: every decision from their evidence anchor; board_readings "
+            "bucket_calibration_rows: every settled station-day since TRADED_CALIBRATION_SINCE, "
+            "mode agreement from its kept days; live_book: the ladder each live decision names; "
+            "dashboard: landing from the evidence floor, the settled windows and counts from what "
+            "is hot (its closed days kept in its cache)."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("station_id", "stage"), order=("decision_at_utc",), count=1,
+                why="a reader of a station's newest committed decision finds it whatever its age",
+            ),
+        ),
+        keep_decision_envelopes=KeepDecisionEnvelopes(
+            scope_index="basket_probability_bridge_history_asof_idx",
+            hash_column="envelope_content_sha256",
+            why="live_book re-reads the ladder each live decision's seat was priced on",
+        ),
+        floors=(
+            DynamicFloor(
+                name="bridge_readers",
+                why="the samplers walk the history from their anchor; the board's traded calibration from 09-06",
+                resolve=bridge_reader_floor,
+            ),
+        ),
+        children=(
+            ChildRows(
+                table="basket_probability_bridge_bucket_probability",
+                column="history_id",
+                parent_column="history_id",
+                why="written in the history row's transaction and read only by its history_id",
+            ),
+        ),
+    ),
 )
 
 POLICY_BY_TABLE = {policy.table: policy for policy in POLICIES}
@@ -1304,6 +1418,36 @@ def _foreign_key_refs(conn: sqlite3.Connection, table: str) -> list[tuple[str, s
     return refs
 
 
+def _child_reasons(conn: sqlite3.Connection, child: ChildRows) -> list[str]:
+    """Why ``child`` cannot leave with its parents (empty when it can)."""
+
+    if not _table_exists(conn, child.table):
+        return [f"child_table_missing:{child.table}"]
+    reasons: list[str] = []
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (child.table,)
+    ).fetchone()[0]
+    if "WITHOUT ROWID" in _normalized_sql(sql):
+        reasons.append(f"child_without_rowid_table:{child.table}")
+    if child.column not in set(_columns(conn, child.table)):
+        reasons.append(f"child_column_missing:{child.table}.{child.column}")
+    # The children of a batch are found by key, so the key must lead an index.
+    leading = {
+        str(info[2])
+        for (_seq, name, *_rest) in conn.execute(f"PRAGMA index_list({_q(child.table)})")
+        for info in conn.execute(f"PRAGMA index_info({_q(name)})")
+        if int(info[0]) == 0
+    }
+    if child.column not in leading:
+        reasons.append(f"child_index_missing:{child.table}.{child.column}")
+    if _foreign_key_children(conn, child.table):
+        reasons.append(f"child_has_foreign_key_children:{child.table}")
+    for name, trigger_sql in _triggers(conn, child.table):
+        if " DELETE ON " in _normalized_sql(trigger_sql) and not _is_append_only_guard(trigger_sql):
+            reasons.append(f"child_delete_trigger_not_a_guard:{name}")
+    return reasons
+
+
 def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
     """Why ``policy.table`` may not be offloaded here (empty when it may)."""
 
@@ -1337,7 +1481,8 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
         if indexed is None:
             reasons.append("index_missing:" + policy.keep_decision_plans.instant_index)
     if policy.keep_decision_envelopes is not None:
-        needed.update({"station_id", "event_date", "stage", "state", "decision_at_utc", "content_sha256"})
+        needed.update({"station_id", "event_date", "stage", "state", "decision_at_utc",
+                       policy.keep_decision_envelopes.hash_column})
         indexed = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='index' AND tbl_name=? AND name=?",
             (table, policy.keep_decision_envelopes.scope_index),
@@ -1354,6 +1499,9 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
             needed.update(parent for _child, _column, parent in _foreign_key_refs(conn, table))
         except OffloadRefused as exc:
             reasons.append(str(exc))
+    for child in policy.children:
+        needed.add(child.parent_column)
+        reasons.extend(_child_reasons(conn, child))
     missing = sorted(needed - columns)
     if missing:
         reasons.append("columns_missing:" + ",".join(missing))
@@ -1585,7 +1733,7 @@ def _decision_envelope_rowids(
     for station, day, second, sha, stage in sorted(named):
         found = [
             int(rowid) for rowid, content in conn.execute(
-                f"SELECT rowid, content_sha256 FROM {_q(table)} INDEXED BY {_q(rule.scope_index)}"
+                f"SELECT rowid, {_q(rule.hash_column)} FROM {_q(table)} INDEXED BY {_q(rule.scope_index)}"
                 " WHERE state='COMMITTED' AND event_date=? AND station_id=?"
                 " AND decision_at_utc>=? AND decision_at_utc<=? AND stage=?",
                 (day, station, second, second + "z", stage),
@@ -2353,6 +2501,22 @@ def _read_rows(conn: sqlite3.Connection, table: str, columns: Sequence[str], row
     return rows
 
 
+def _read_child_rows(
+    conn: sqlite3.Connection, table: str, columns: Sequence[str], column: str, keys: Sequence[Any],
+) -> list[tuple]:
+    listed = ",".join(_q(c) for c in columns)
+    rows: list[tuple] = []
+    for chunk in _chunks(list(keys), READ_CHUNK):
+        marks = ",".join("?" * len(chunk))
+        rows.extend(
+            tuple(r) for r in conn.execute(
+                f"SELECT rowid,{listed} FROM {_q(table)} WHERE {_q(column)} IN ({marks})", tuple(chunk),
+            )
+        )
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
 def _begin_immediate(
     conn: sqlite3.Connection, *, sleep: Callable[[float], None] = time.sleep,
     attempts: int = 6, wait_sec: float = 30.0,
@@ -2450,10 +2614,15 @@ def move_table(
         "batches": 0, "max_lock_sec": 0.0, "max_lock_wait_sec": 0.0, "mirrored_rows": 0,
         "cold_path": str(cold_path(cold_root, table)),
     }
+    if policy.children:
+        result["child_rows"] = {child.table: 0 for child in policy.children}
     columns = _columns(read, table)
     cold_file = cold_path(cold_root, table)
     cold = _open_cold(cold_file)
     verify: sqlite3.Connection | None = None
+    # Per child: (rule, its columns, its cold file, its cold connection, its
+    # read-back connection once the cold table exists).
+    kin: list[list[Any]] = []
     listed = ",".join(_q(c) for c in columns)
     marks = ",".join("?" * (len(columns) + 1))
     policy_json = json.dumps(policy.describe(), ensure_ascii=False, sort_keys=True)
@@ -2467,6 +2636,40 @@ def move_table(
         nonlocal since_check
         ids = [int(r[0]) for r in rows]
         digest = rows_digest(rows)
+        # 1b. The children leave first onto the volume, each into its own
+        # file, so a crash leaves at worst a child copied whose parent is
+        # still hot (copied again, INSERT OR IGNORE, by the next run).
+        copied_kin: list[tuple[ChildRows, list[str], list[tuple], list[Any]]] = []
+        for child, child_columns, child_file, child_cold, child_verify in kin:
+            at = columns.index(child.parent_column) + 1
+            keys = sorted({r[at] for r in rows}, key=_sql_order_key)
+            kids = _read_child_rows(read, child.table, child_columns, child.column, keys)
+            if kids:
+                child_listed = ",".join(_q(c) for c in child_columns)
+                child_marks = ",".join("?" * (len(child_columns) + 1))
+                child_cold.execute("BEGIN IMMEDIATE")
+                try:
+                    child_cold.executemany(
+                        f"INSERT OR IGNORE INTO {_q(child.table)}(rowid,{child_listed}) VALUES({child_marks})",
+                        kids,
+                    )
+                    child_cold.execute(
+                        f"INSERT INTO {COLD_BATCH_TABLE}(table_name,first_rowid,last_rowid,row_count,"
+                        "rows_sha256,payload_bytes,source_path,cutoff_before,policy_json,copied_at_utc)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (child.table, int(kids[0][0]), int(kids[-1][0]), len(kids), rows_digest(kids),
+                         sum(_row_bytes(k) for k in kids), str(ssot_path), plan.cutoff, policy_json,
+                         _iso(_utc_now())),
+                    )
+                    child_cold.execute("COMMIT")
+                except BaseException:
+                    if child_cold.in_transaction:
+                        child_cold.execute("ROLLBACK")
+                    raise
+                landed_kids = _read_rows(child_verify, child.table, child_columns, [int(k[0]) for k in kids])
+                if not same_rows(landed_kids, kids):
+                    return "cold_child_verify_mismatch:" + child.table
+            copied_kin.append((child, child_columns, kids, keys))
         # 2. Onto the volume, with the batch's own ledger row.
         cold.execute("BEGIN IMMEDIATE")
         try:
@@ -2500,6 +2703,19 @@ def move_table(
             if not same_rows(again, rows):
                 delete.execute("ROLLBACK")
                 return "ssot_rows_changed_since_copy"
+            for child, child_columns, kids, keys in copied_kin:
+                if not same_rows(_read_child_rows(delete, child.table, child_columns, child.column, keys), kids):
+                    delete.execute("ROLLBACK")
+                    return "ssot_child_rows_changed_since_copy:" + child.table
+                gone = 0
+                for chunk in _chunks([int(k[0]) for k in kids], READ_CHUNK):
+                    gone += delete.execute(
+                        f"DELETE FROM {_q(child.table)} WHERE rowid IN ({','.join('?' * len(chunk))})",
+                        tuple(chunk),
+                    ).rowcount
+                if gone != len(kids):
+                    delete.execute("ROLLBACK")
+                    return "ssot_child_delete_count_mismatch:" + child.table
             removed = 0
             for chunk in _chunks(ids, READ_CHUNK):
                 removed += delete.execute(
@@ -2534,6 +2750,20 @@ def move_table(
             "lock_sec": round(held, 3), "committed_at_utc": _iso(_utc_now()),
             "production_dependency": False,
         })
+        for child, _child_columns, kids, _keys in copied_kin:
+            if not kids:
+                continue
+            # Its own line, so ``attach_cold_history`` knows the child has
+            # cold rows too and fails closed without its file.
+            _append_manifest(manifest, {
+                "schema": BATCH_SCHEMA, "table": child.table, "parent_table": table,
+                "first_rowid": int(kids[0][0]), "last_rowid": int(kids[-1][0]), "rows": len(kids),
+                "payload_bytes": sum(_row_bytes(k) for k in kids), "rows_sha256": rows_digest(kids),
+                "cold_path": str(cold_path(cold_root, child.table)), "cutoff_before": plan.cutoff,
+                "parent_first_rowid": ids[0], "parent_last_rowid": ids[-1],
+                "committed_at_utc": _iso(_utc_now()), "production_dependency": False,
+            })
+            result["child_rows"][child.table] += len(kids)
         result["moved_rows"] += len(ids)
         result["moved_bytes"] += size
         result["batches"] += 1
@@ -2553,6 +2783,12 @@ def move_table(
         ensure_cold_table(read, cold, table, time_column=policy.time_column)
         for side in policy.mirror_tables:
             result["mirrored_rows"] += mirror_table(read, cold, side)
+        for child in policy.children:
+            child_file = cold_path(cold_root, child.table)
+            child_cold = _open_cold(child_file)
+            kin.append([child, _columns(read, child.table), child_file, child_cold, None])
+            ensure_cold_table(read, child_cold, child.table)
+            kin[-1][4] = sqlite3.connect(f"file:{child_file}?mode=ro", uri=True, timeout=60.0)
         verify = sqlite3.connect(f"file:{cold_file}?mode=ro", uri=True, timeout=60.0)
         pending: list[tuple] = []
         pending_bytes = 0
@@ -2587,6 +2823,14 @@ def move_table(
     finally:
         if verify is not None:
             verify.close()
+        for _child, _child_columns, _child_file, child_cold, child_verify in kin:
+            if child_verify is not None:
+                child_verify.close()
+            try:
+                child_cold.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error:
+                pass
+            child_cold.close()
         try:
             cold.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         except sqlite3.Error:
@@ -2627,6 +2871,8 @@ def restore_table(
     target = _delete_connection(ssot_path)
     restored = 0
     rowids: list[int] = []
+    parent_keys: dict[str, set[Any]] = {child.parent_column: set() for child in policy.children}
+    children_restored: dict[str, int] = {}
     try:
         if _cold_columns(source, table) != _cold_columns(target, table):
             raise OffloadRefused(f"cold_schema_mismatch:{table}")
@@ -2643,6 +2889,9 @@ def restore_table(
         )]
         for chunk in _chunks(rowids, READ_CHUNK):
             rows = _read_rows(source, table, columns, chunk)
+            for parent_column, keys in parent_keys.items():
+                at = columns.index(parent_column) + 1
+                keys.update(r[at] for r in rows)
             _begin_immediate(target, sleep=sleep)
             try:
                 before = target.total_changes
@@ -2656,12 +2905,47 @@ def restore_table(
                     target.execute("ROLLBACK")
                 raise
             sleep(PAUSE_SEC)
+        # The children come back with their parents; a parent row was never
+        # deleted without its children, so a missing child file is a fault.
+        for child in policy.children:
+            keys = sorted(parent_keys[child.parent_column], key=_sql_order_key)
+            if not keys:
+                children_restored[child.table] = 0
+                continue
+            kin_source = open_cold_table(child.table, root=cold_root)
+            try:
+                if _cold_columns(kin_source, child.table) != _cold_columns(target, child.table):
+                    raise OffloadRefused(f"cold_schema_mismatch:{child.table}")
+                child_columns = _columns(kin_source, child.table)
+                child_listed = ",".join(_q(c) for c in child_columns)
+                child_marks = ",".join("?" * (len(child_columns) + 1))
+                kids = _read_child_rows(kin_source, child.table, child_columns, child.column, keys)
+                count = 0
+                for chunk in _chunks(kids, READ_CHUNK):
+                    _begin_immediate(target, sleep=sleep)
+                    try:
+                        before = target.total_changes
+                        target.executemany(
+                            f"INSERT OR IGNORE INTO {_q(child.table)}(rowid,{child_listed}) VALUES({child_marks})",
+                            chunk,
+                        )
+                        count += target.total_changes - before
+                        target.execute("COMMIT")
+                    except BaseException:
+                        if target.in_transaction:
+                            target.execute("ROLLBACK")
+                        raise
+                    sleep(PAUSE_SEC)
+                children_restored[child.table] = count
+            finally:
+                kin_source.close()
     finally:
         source.close()
         target.close()
     return {
         "schema": SCHEMA, "table": table, "since": since, "until": until,
         "cold_rows_selected": len(rowids), "restored_rows": restored,
+        "restored_child_rows": children_restored,
         "hold": hold, "holds_path": str(holds_path),
     }
 
