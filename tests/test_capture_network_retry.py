@@ -64,11 +64,12 @@ def test_a_dead_sweeps_tail_is_read_for_transport_errors() -> None:
     assert not output_names_network_failure("KeyError: 'station_id'")
 
 
-def test_the_delay_doubles_from_five_minutes_and_stops_at_the_interval() -> None:
+def test_the_delay_doubles_from_five_minutes_and_stops_at_half_an_hour_or_the_interval() -> None:
     assert network_retry_delay(10800.0, 1) == 300.0
     assert network_retry_delay(10800.0, 2) == 600.0
-    assert network_retry_delay(10800.0, 4) == 2400.0
-    assert network_retry_delay(10800.0, 9) == 10800.0
+    assert network_retry_delay(10800.0, 3) == 1200.0
+    assert network_retry_delay(10800.0, 4) == 1800.0
+    assert network_retry_delay(10800.0, 12) == 1800.0
     assert network_retry_delay(1200.0, 1) == 300.0
     assert network_retry_delay(120.0, 1) == 120.0
 

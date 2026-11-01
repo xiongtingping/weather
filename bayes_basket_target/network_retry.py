@@ -31,8 +31,12 @@ import urllib.error
 HOSTED_SWEEP_NETWORK_RETRY_MARKER = "hosted_sweep:network_retry"
 HOSTED_SWEEP_NETWORK_RETRY_STATE = "network_retry"
 # First retry after five minutes, doubling per consecutive network failure,
-# never later than the lane's own interval.
+# never later than the lane's own interval nor than half an hour: after the
+# 571-minute proxy outage of 2026-10-31 the doubling had reached each lane's
+# 3 h interval, so the captures sat out up to three hours of restored network
+# (user 2026-11-01 「封顶 30 分钟」).
 NETWORK_RETRY_FIRST_DELAY_SEC = 300.0
+NETWORK_RETRY_MAX_DELAY_SEC = 1800.0
 
 
 class NetworkUnavailable(ConnectionError):
@@ -121,4 +125,4 @@ def network_retry_delay(interval_sec: float, streak: int) -> float:
     comes due again."""
 
     step = NETWORK_RETRY_FIRST_DELAY_SEC * (2 ** max(0, int(streak) - 1))
-    return min(float(interval_sec), step)
+    return min(float(interval_sec), step, NETWORK_RETRY_MAX_DELAY_SEC)
