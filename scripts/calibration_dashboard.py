@@ -19412,8 +19412,13 @@ function wrfTmaxPanel(){
         + (nOld ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:1px solid ${KCOL.nowcast_ig};opacity:.4;display:inline-block"></i>IFS+GDPS 较早各版（${nOld}）</span>` : "")
         + (O.length ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--text);display:inline-block"></i>机场报文（至今最高 ${n(obsMax, 0)}°）</span>` : "");
       if(!L2.length && O.length < 2) return "";
-      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温（当地时）：彩色＝临近预报算的每小时气温，黑点＝机场实测${L2.length ? "" : " · 今天的临近预报还没出"}</div>
-        <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天逐小时气温">${g}</svg>
+      // The shared time-chart hover (sdTTHover), on local hours: each newest curve interpolated between its
+      // hours and blank outside them, each report standing for at most 1.5 h (user 2026-11-01 「鼠标悬停查看当前时间轴各条曲线」).
+      const ttD = {t0: 0, t1: 24, W, H: Hh, L: pl, R: pr, T: pt, B: pb, i: 1, u: "h",
+        s: L2.filter(l => !l.old).map(l => ({n: l.name, c: l.c, p: l.xy.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 100) / 100])}))
+          .concat(O.length ? [{n: "机场实测", c: "var(--text)", hold: 1.5, dg: 0, p: O.map(q => [Math.round(q[0] * 1000) / 1000, q[1]])}] : [])};
+      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：彩色＝临近预报算的每小时气温，黑点＝机场实测${L2.length ? "" : " · 今天的临近预报还没出"}</div>
+        <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天逐小时气温" data-tt="${sdEsc(JSON.stringify(ttD))}">${g}<line class="sd-tt-x" x1="0" x2="0" y1="${pt}" y2="${Hh - pb}" visibility="hidden"/></svg>
         <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:2px">${key}</div>`;
     })();
     const todayHero = heroV == null && !ups.length && !bfUps.length ? "" : `<div class="card" style="border-left:4px solid ${KCOL[nowV ? (nowIg ? "nowcast_ig" : "nowcast") : "fcst"]};margin-top:4px">
@@ -23623,13 +23628,18 @@ function sdTTHover(e){
   let i = 0; while(i < K.length - 2 && x > K[i + 1][0]) i++;
   const t = K[i][1] + (K[i + 1][1] - K[i][1]) * (x - K[i][0]) / (K[i + 1][0] - K[i][0]);
   const xOf = ts => { let j = 0; while(j < K.length - 2 && ts > K[j + 1][1]) j++; return K[j][0] + (K[j + 1][0] - K[j][0]) * (ts - K[j][1]) / (K[j + 1][1] - K[j][1]); };
-  const rows = D.s.map(s => { let v = null; for(const [ts, y] of s.p){ if(ts <= t) v = y; else break; } return [s, v]; }).filter(([, v]) => v != null);
+  const rows = D.s.map(s => { let v = null;
+    if(D.i && s.hold){ for(const [ts, y] of s.p){ if(ts <= t) v = t - ts <= s.hold ? y : null; else break; } }
+    else if(D.i){ const P = s.p; for(let j = 0; j < P.length; j++){ if(P[j][0] >= t){ v = P[j][0] === t ? P[j][1] : j ? P[j - 1][1] + (P[j][1] - P[j - 1][1]) * (t - P[j - 1][0]) / (P[j][0] - P[j - 1][0]) : null; break; } } }
+    else for(const [ts, y] of s.p){ if(ts <= t) v = y; else break; }
+    return [s, v]; }).filter(([, v]) => v != null);
   const rule = svg.querySelector(".sd-tt-x");
   document.querySelectorAll(".sd-tt-x").forEach(l => { if(l !== rule) l.setAttribute("visibility", "hidden"); });
   if(rule){ rule.setAttribute("x1", x); rule.setAttribute("x2", x); rule.setAttribute("visibility", "visible"); }
   if(!tip){ tip = document.createElement("div"); tip.id = "sd-tt-tip"; tip.className = "sd-tt-tip"; document.body.appendChild(tip); }
-  tip.innerHTML = `<div class="sd-tt-at">${sdEsc(sdLocal(new Date(t).toISOString(), true))}</div>` + (rows.length ? rows.sort((a, b) => b[1] - a[1]).map(([s, v]) =>
-    `<div><i style="background:${s.c}"></i>${sdEsc(s.n)}<b>${v.toFixed(2)}°C${D.f ? ` · ${(v * 9 / 5 + 32).toFixed(1)}°F` : ""}</b></div>`).join("") : `<div class="muted">此刻之前还没有读数</div>`);
+  const at = D.u === "h" ? `${String(Math.floor(t)).padStart(2, "0")}:${String(Math.floor((t % 1) * 60)).padStart(2, "0")}（当地）` : sdLocal(new Date(t).toISOString(), true);
+  tip.innerHTML = `<div class="sd-tt-at">${sdEsc(at)}</div>` + (rows.length ? rows.sort((a, b) => b[1] - a[1]).map(([s, v]) =>
+    `<div><i style="background:${s.c}"></i>${sdEsc(s.n)}<b>${v.toFixed(s.dg != null ? s.dg : 2)}°C${D.f ? ` · ${(v * 9 / 5 + 32).toFixed(1)}°F` : ""}</b></div>`).join("") : `<div class="muted">此刻之前还没有读数</div>`);
   // On a numbered bucket change (within 6 px of its rule): what changed and why.
   const near = (D.e || []).filter(([ts]) => Math.abs(xOf(ts) - x) <= 6);
   if(near.length) tip.innerHTML += near.map(([, label, c, n]) => `<p class="sd-tt-ev"><b style="background:${c}">${n}</b>${sdEsc(label)}</p>`).join("");
