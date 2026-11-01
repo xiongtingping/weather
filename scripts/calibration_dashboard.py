@@ -19361,36 +19361,28 @@ function wrfTmaxPanel(){
         ${why ? `<div class="muted" style="font-size:12px">${h(why)}</div>` : ""}${ahead}`;
     })();
     const slotUpChart = upChart;
-    // Today hour by hour (user 2026-11-01 「增加当天的曲线图」「曲线是当天临近预报，不是3日预报」): the
-    // same-day nowcasts -- the newest of each route bold, the IFS+GDPS route's earlier versions faint --
-    // and the airport's reports so far, on the local clock.
-    const dayChart = (() => {
-      const gfsNew = TD.nowcast_update_run && (TD.nowcast_updates || []).length && (!TD.nowcast
-        || String(TD.nowcast_updates[TD.nowcast_updates.length - 1].ready_utc) > String(TD.nowcast.ready_utc || ""));
-      const gfsSer = gfsNew ? TD.nowcast_update_run.series : ((TD.configs || {}).nowcast_sat || {}).series, igLast = tIg[tIg.length - 1];
-      const gfsLast = (TD.nowcast_updates || []).concat(TD.nowcast ? [TD.nowcast] : []).sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc))).pop();
-      const lines = [
-        ...(gfsSer && gfsSer.length ? [{pts: gfsSer, c: KCOL.nowcast, w: 2.4, name: `临近预报·GFS 最新一版${gfsLast ? `（${loc(gfsLast.ready_utc)}）` : ""}`, peak: true}] : []),
-        ...(igLast && (igLast.series || []).length ? [{pts: igLast.series, c: KCOL.nowcast_ig, w: 2.4, name: `临近预报·IFS+GDPS 最新一版（${loc(igLast.ready_utc)}）`, peak: true}] : []),
-      ];
-      const obs = TD.obs_series || [];
+    // One day hour by hour on the local clock: forecast curves (each `peak` one's maximum labelled), the
+    // airport's reports, the truth once in, and the shared hover.
+    const hourChart = (day, lines, obs, truth, title, aria, empty) => {
       if(!lines.length && !obs.length) return "";
-      const zone = S.timezone, d0 = Date.parse(`${today}T00:00:00Z`);
+      const zone = S.timezone, d0 = Date.parse(`${day}T00:00:00Z`);
       const hr = t => { const q = new Intl.DateTimeFormat("en-CA", {timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).formatToParts(new Date(t));
         const g = k => q.find(x => x.type === k).value; return (Date.parse(`${g("year")}-${g("month")}-${g("day")}T00:00:00Z`) - d0) / 36e5 + (+g("hour")) + g("minute") / 60; };
       const inDay = pts => pts.map(p => [hr(p[0]), p[1]]).filter(p => p[0] >= 0 && p[0] <= 24 && p[1] != null && isFinite(p[1]));
       const L2 = lines.map(l => ({...l, xy: inDay(l.pts)})).filter(l => l.xy.length), O = inDay(obs);
-      const vs = L2.flatMap(l => l.xy.map(p => p[1])).concat(O.map(p => p[1]), TD.truth_c == null ? [] : [TD.truth_c]);
+      const vs = L2.flatMap(l => l.xy.map(p => p[1])).concat(O.map(p => p[1]), truth == null ? [] : [truth]);
       if(!vs.length) return "";
       const W = 760, Hh = 230, pl = 34, pr = 12, pt = 16, pb = 26;
-      const lo = Math.floor(Math.min(...vs) - 0.5), hi = Math.ceil(Math.max(...vs) + 0.8), stp = hi - lo > 10 ? 1 : 0.5;
+      const lo = Math.floor(Math.min(...vs) - 0.5), hi = Math.ceil(Math.max(...vs) + 0.8);
       const X = x => pl + x * (W - pl - pr) / 24, Y = v => pt + (hi - v) * (Hh - pt - pb) / (hi - lo);
       let g = "";
-      for(let v = Math.ceil(lo / stp) * stp; v <= hi; v += stp) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}°</text>`;
+      // a line every 0.5° (user 2026-11-02 「左侧纵坐标0.5为一个区间」); the half-degree labels only where they fit
+      const half = (Hh - pt - pb) / (hi - lo) / 2 >= 12;
+      for(let v = lo; v <= hi; v += 0.5) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"${v % 1 ? ` stroke-opacity=".55"` : ""}/>${half || !(v % 1) ? `<text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}°</text>` : ""}`;
       for(let x = 0; x <= 24; x += 3) g += `<text x="${X(x)}" y="${Hh - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(x).padStart(2, "0")}:00</text>`;
       const nowX = hr(Date.now());
       if(nowX > 0 && nowX < 24) g += `<line x1="${X(nowX)}" x2="${X(nowX)}" y1="${pt}" y2="${Hh - pb}" stroke="var(--muted)" stroke-dasharray="2 3"/><text x="${X(nowX) + 3}" y="${pt + 9}" font-size="10" fill="var(--muted)">现在</text>`;
-      if(TD.truth_c != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(TD.truth_c)}" y2="${Y(TD.truth_c)}" stroke="var(--text)" stroke-dasharray="5 3"/><text x="${W - pr}" y="${Y(TD.truth_c) - 4}" text-anchor="end" font-size="10.5" fill="var(--text)">实测最高 ${n(TD.truth_c, 0)}°</text>`;
+      if(truth != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(truth)}" y2="${Y(truth)}" stroke="var(--text)" stroke-dasharray="5 3"/><text x="${W - pr}" y="${Y(TD.truth_c) - 4}" text-anchor="end" font-size="10.5" fill="var(--text)">实测最高 ${n(truth, 0)}°</text>`;
       L2.forEach(l => { g += `<polyline fill="none" stroke="${l.c}" stroke-width="${l.w}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""} points="${l.xy.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"><title>${h(l.name)}</title></polyline>`; });
       // each main curve's peak, its value above it; labels that would touch stack downward
       const placed = [];
@@ -19414,9 +19406,23 @@ function wrfTmaxPanel(){
       const ttD = {t0: 0, t1: 24, W, H: Hh, L: pl, R: pr, T: pt, B: pb, i: 1, u: "h",
         s: L2.map(l => ({n: l.name, c: l.c, dg: 1, p: l.xy.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 100) / 100])}))
           .concat(O.length ? [{n: "机场实测", c: "var(--text)", hold: 1.5, dg: 0, p: O.map(q => [Math.round(q[0] * 1000) / 1000, q[1]])}] : [])};
-      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：彩色＝临近预报算的每小时气温，黑点＝机场实测${L2.length ? "" : " · 今天的临近预报还没出"}</div>
-        <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天逐小时气温" data-tt="${sdEsc(JSON.stringify(ttD))}">${g}<line class="sd-tt-x" x1="0" x2="0" y1="${pt}" y2="${Hh - pb}" visibility="hidden"/></svg>
+      return `<div class="muted" style="margin-top:12px;font-size:12px">${title}${L2.length ? "" : ` · ${empty}`}</div>
+        <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="${aria}" data-tt="${sdEsc(JSON.stringify(ttD))}">${g}<line class="sd-tt-x" x1="0" x2="0" y1="${pt}" y2="${Hh - pb}" visibility="hidden"/></svg>
         <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:2px">${key}</div>`;
+    };
+    // Today hour by hour (user 2026-11-01 「增加当天的曲线图」「曲线是当天临近预报，不是3日预报」): the
+    // newest same-day nowcast of each route and the airport's reports so far.
+    const dayChart = (() => {
+      const gfsNew = TD.nowcast_update_run && (TD.nowcast_updates || []).length && (!TD.nowcast
+        || String(TD.nowcast_updates[TD.nowcast_updates.length - 1].ready_utc) > String(TD.nowcast.ready_utc || ""));
+      const gfsSer = gfsNew ? TD.nowcast_update_run.series : ((TD.configs || {}).nowcast_sat || {}).series, igLast = tIg[tIg.length - 1];
+      const gfsLast = (TD.nowcast_updates || []).concat(TD.nowcast ? [TD.nowcast] : []).sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc))).pop();
+      const lines = [
+        ...(gfsSer && gfsSer.length ? [{pts: gfsSer, c: KCOL.nowcast, w: 2.4, name: `临近预报·GFS 最新一版${gfsLast ? `（${loc(gfsLast.ready_utc)}）` : ""}`, peak: true}] : []),
+        ...(igLast && (igLast.series || []).length ? [{pts: igLast.series, c: KCOL.nowcast_ig, w: 2.4, name: `临近预报·IFS+GDPS 最新一版（${loc(igLast.ready_utc)}）`, peak: true}] : []),
+      ];
+      return hourChart(today, lines, TD.obs_series || [], TD.truth_c,
+        "今天逐小时气温（当地时；鼠标悬停看该时刻各条曲线）：彩色＝临近预报算的每小时气温，黑点＝机场实测", "今天逐小时气温", "今天的临近预报还没出");
     })();
     const todayHero = heroV == null && !ups.length && !bfUps.length ? "" : `<div class="card" style="border-left:4px solid ${KCOL[nowV ? (nowIg ? "nowcast_ig" : "nowcast") : "fcst"]};margin-top:4px">
       <div class="muted">今天 ${h(today.slice(5))} 周${wk(today)} · WRF 最高温预报</div>
@@ -19426,7 +19432,18 @@ function wrfTmaxPanel(){
     // The forecast leads (user 2026-10-31 「突出预报，弱化谁更准」「预报突出今天（每次的更新）」): today
     // and its updates, today's nowcast cards and issue curve, then the coming days; who was nearest
     // is one line, its last-seven-days table in the fold.
-    return todayHero + todayCards + issueRow + aheadRow + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + rankStrip + igStrip
+    // Tomorrow hour by hour (user 2026-11-02 「第二天（明天）的预报逐小时气温图呢？」): the newest three-day
+    // run's two members, each one's maximum labelled -- the card's number is the mean of those two.
+    const tmrDay = ahead.find(d => d > today), tmr = tmrDay ? S.days[tmrDay].configs.fcst : null;
+    const tmrMs = (tmr || {}).member_series || {};
+    const tmrChart = !tmr ? "" : hourChart(tmrDay, [
+        ...(tmrMs.ifs ? [{pts: tmrMs.ifs, c: KCOL.fcst, w: 2.2, name: "三日预报·IFS 成员", peak: true}] : []),
+        ...(tmrMs.gdps ? [{pts: tmrMs.gdps, c: KCOL.fcst, w: 2.2, dash: "6 3", name: "三日预报·GDPS 成员", peak: true}] : []),
+        ...(!tmrMs.ifs && !tmrMs.gdps && (tmr.series || []).length ? [{pts: tmr.series, c: KCOL.fcst, w: 2.2, name: "三日预报", peak: true}] : [])],
+      [], S.days[tmrDay].truth_c,
+      `明天 ${h(tmrDay.slice(5))} 周${wk(tmrDay)} 逐小时气温（当地时；${String(tmr.init_utc || "").slice(5, 10)} ${String(tmr.init_utc || "").slice(11, 13)}Z 起报的三日预报；鼠标悬停看该时刻各条曲线）：实线 IFS、虚线 GDPS，各标出自己的最高${tmr.members ? `，明天的数字 ${n(tmr.tmax_c)}° 是两者最高的平均` : ""}`,
+      "明天逐小时气温", "三日预报还没算到明天");
+    return todayHero + todayCards + issueRow + aheadRow + (tmrChart ? `<div class="card" style="margin-top:8px;border-left:4px solid ${KCOL.fcst}">${tmrChart}</div>` : "") + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + rankStrip + igStrip
       + `<details style="margin-top:10px"><summary class="muted">更多：最近几天各家对比、今天各家明细、各配置误差、逐日全表、回算</summary>`
       + recentTable + top + ncRow + tiles + table + restTable + `</details>`;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
