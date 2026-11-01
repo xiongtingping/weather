@@ -19307,6 +19307,63 @@ function wrfTmaxPanel(){
       return `<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天最高温的逐次预报">${g}</svg>
         <div class="muted" style="font-size:11.5px">每个点＝一次更新报的今天最高温；横轴＝三日预报的起报时次（UTC）或当天临近预报的出数时间（当地）；实心点＝最新；每路只连自己的上一版（两路临近预报各成一条线）；${bfUps.length ? "青色虚线方块＝IFS+GDPS 补跑过去时次（10-30 前实时为 GFS 驱动，补跑只作对照、不计前向成绩）；" : ""}悬停看与上一次的差</div>`;
     })();
+    // Today's nowcasts on the local clock (user 2026-11-01 「但是这样我看不懂」): the three-day runs of earlier
+    // days off this axis (a line of text), each route's predicted maximum at its issue time, the airport's
+    // maximum so far as a black step, and in words why the routes stop moving once the model's peak hour
+    // is behind (later clouds change only the cooler hours after it).
+    const tmChart = (() => {
+      const routes = [["nowcast", tIssues], ["nowcast_ig", tIg]].map(([k, a]) => [k, a.filter(r => r.sat_c != null && isFinite(r.sat_c))]).filter(([, a]) => a.length);
+      if(!routes.length) return "";
+      const zone = S.timezone, d0 = Date.parse(`${today}T00:00:00Z`);
+      const hr = t => { const q = new Intl.DateTimeFormat("en-CA", {timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).formatToParts(new Date(t));
+        const g = k => q.find(x => x.type === k).value; return (Date.parse(`${g("year")}-${g("month")}-${g("day")}T00:00:00Z`) - d0) / 36e5 + (+g("hour")) + g("minute") / 60; };
+      const hm = x => `${String(Math.floor(x)).padStart(2, "0")}:${String(Math.round((x - Math.floor(x)) * 60)).padStart(2, "0")}`;
+      const P = routes.map(([k, a]) => ({k, xy: a.map(r => [hr(r.ready_utc), r.sat_c, r])}));
+      const O = (TD.obs_series || []).map(q => [hr(q[0]), q[1]]).filter(q => q[0] >= 0 && q[0] <= 24 && q[1] != null && isFinite(q[1]));
+      const nowX = Math.min(24, Math.max(0, hr(Date.now()))), xs = P.flatMap(q => q.xy.map(z => z[0]));
+      const x0 = Math.max(0, Math.min(8, Math.floor(Math.min(...xs)))), x1 = Math.min(24, Math.ceil(Math.max(nowX, ...xs) + 0.3));
+      const run = []; let mx = -Infinity; O.forEach(q => { if(q[1] > mx) { mx = q[1]; run.push([q[0], mx]); } });
+      const vs = P.flatMap(q => q.xy.map(z => z[1])).concat(run.map(r => r[1]));
+      const lo = Math.floor(Math.min(...vs) - 0.4), hi = Math.ceil(Math.max(...vs) + 0.4), stp = hi - lo > 6 ? 1 : 0.5;
+      const W = 760, Hh = 210, pl = 34, pr = 112, pt = 14, pb = 28;
+      const X = x => pl + (x - x0) * (W - pl - pr) / (x1 - x0), Y = v => pt + (hi - v) * (Hh - pt - pb) / (hi - lo);
+      let g = "";
+      for(let v = Math.ceil(lo / stp) * stp; v <= hi + 1e-9; v += stp) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v % 1 ? v.toFixed(1) : v}°</text>`;
+      for(let x = Math.ceil(x0); x <= x1; x += x1 - x0 > 8 ? 2 : 1) g += `<text x="${X(x)}" y="${Hh - 10}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(x).padStart(2, "0")}:00</text>`;
+      if(nowX > x0 && nowX < x1) g += `<line x1="${X(nowX)}" x2="${X(nowX)}" y1="${pt}" y2="${Hh - pb}" stroke="var(--muted)" stroke-dasharray="2 3"/><text x="${X(nowX) - 3}" y="${pt + 9}" text-anchor="end" font-size="10" fill="var(--muted)">现在</text>`;
+      const ends = [];
+      // the airport's maximum so far: a step from its first report in view to now
+      const vis = run.filter(r => r[0] <= x1);
+      if(vis.length) {
+        const st = []; vis.forEach((r, i) => { const xa = Math.max(x0, r[0]); if(i) st.push([xa, vis[i - 1][1]]); st.push([xa, r[1]]); });
+        st.push([Math.min(x1, Math.max(nowX, vis[vis.length - 1][0])), vis[vis.length - 1][1]]);
+        g += `<polyline fill="none" stroke="var(--text)" stroke-width="2" points="${st.map(q => `${X(q[0]).toFixed(1)},${Y(q[1]).toFixed(1)}`).join(" ")}"><title>${h(`机场已报最高（实况）：${vis.map(r => `${hm(r[0])} ${n(r[1], 0)}°`).join(" → ")}`)}</title></polyline>`;
+        ends.push({y: Y(vis[vis.length - 1][1]), c: "var(--text)", t: `实况已到 ${n(vis[vis.length - 1][1], 0)}°`});
+      }
+      P.forEach(({k, xy}) => {
+        g += `<polyline fill="none" stroke="${KCOL[k]}" stroke-width="2.4" points="${xy.map(z => `${X(z[0]).toFixed(1)},${Y(z[1]).toFixed(1)}`).join(" ")}"/>`;
+        xy.forEach((z, i) => { const last1 = i === xy.length - 1, r = z[2];
+          g += `<circle cx="${X(z[0])}" cy="${Y(z[1])}" r="${last1 ? 4.6 : 3.2}" fill="${last1 ? KCOL[k] : "var(--bg,#fff)"}" stroke="${KCOL[k]}" stroke-width="2"><title>${h(`${KWORD[k]} · ${loc(r.ready_utc)} 出数 · 云图 ${r.last_scan_utc ? loc(`${today}T${r.last_scan_utc}:00Z`) : "—"} · 预测今天最高 ${n(z[1], 2)}°C${i ? ` · 比本路上一版 ${sg(z[1] - xy[i - 1][1], 2)}` : ""}`)}</title></circle>`; });
+        ends.push({y: Y(xy[xy.length - 1][1]), c: KCOL[k], t: `${k === "nowcast" ? "GFS" : "IFS+GDPS"} ${n(xy[xy.length - 1][1])}°`});
+      });
+      ends.sort((a, b) => a.y - b.y).forEach((e, i, a) => { if(i && e.y - a[i - 1].y < 13) e.y = a[i - 1].y + 13;
+        g += `<text x="${W - pr + 8}" y="${e.y + 4}" font-size="11.5" font-weight="700" fill="${e.c}">${h(e.t)}</text>`; });
+      // where each route's newest version puts the day's warmest hour
+      const gfsNewer = TD.nowcast_update_run && (TD.nowcast_updates || []).length && (!TD.nowcast
+        || String(TD.nowcast_updates[TD.nowcast_updates.length - 1].ready_utc) > String(TD.nowcast.ready_utc || ""));
+      const sers = {nowcast: gfsNewer ? TD.nowcast_update_run.series : ((TD.configs || {}).nowcast_sat || {}).series, nowcast_ig: (tIg[tIg.length - 1] || {}).series};
+      const peaks = P.map(({k}) => { const se = (sers[k] || []).filter(q => q[1] != null); if(!se.length) return null;
+        const pk = se.reduce((a, b) => b[1] > a[1] ? b : a); return {k, x: hr(pk[0])}; }).filter(Boolean);
+      const past = peaks.filter(q => q.x <= nowX);
+      const why = !peaks.length ? "" : `模式算出的今天最暖时刻：${peaks.map(q => `${q.k === "nowcast" ? "GFS" : "IFS+GDPS"} ${hm(q.x)}`).join("，")}。`
+        + (past.length ? `${past.length === peaks.length ? "都已过去" : "部分已过去"}：之后每一版用新云图重算的只是那以后、本来就更凉的小时，过去的小时用的仍是当时的云图、结果一样，所以预测的“今天最高”不再变；模式也不读机场实测气温，偏高偏低都不会被实况拉回。` : "还没到：新云图仍会改变预测的最高温。");
+      const fc = ups.filter(u => u.kind === "fcst" || u.kind === "gfs");
+      const ahead = !fc.length ? "" : `<div class="muted" style="font-size:12px;margin-top:4px">之前几天的三日预报报的今天最高：${fc.map(u => `<span class="mono" style="color:${KCOL[u.kind]}" title="${h(`${u.label} 起报 · ${KWORD[u.kind]}`)}">${+u.label.slice(3, 5)}日${u.label.slice(6)} ${n(u.v)}°</span>`).join(" → ")}</div>`;
+      return `<div class="muted" style="font-size:12px">今天的最高温预测，按出数时间（当地）：每个点＝那一版预测的今天最高温，黑色台阶＝机场到那时实测的最高</div>
+        <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天最高温的预测，按出数时间">${g}</svg>
+        ${why ? `<div class="muted" style="font-size:12px">${h(why)}</div>` : ""}${ahead}`;
+    })();
+    const slotUpChart = upChart;
     // Today hour by hour (user 2026-11-01 「增加当天的曲线图」「曲线是当天临近预报，不是3日预报」): the
     // same-day nowcasts -- the newest of each route bold, the IFS+GDPS route's earlier versions faint --
     // and the airport's reports so far, on the local clock.
@@ -19358,7 +19415,7 @@ function wrfTmaxPanel(){
         + (nOld ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:16px;height:0;border-top:1px solid ${KCOL.nowcast_ig};opacity:.4;display:inline-block"></i>IFS+GDPS 较早各版（${nOld}）</span>` : "")
         + (O.length ? `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--text);display:inline-block"></i>机场报文（至今最高 ${n(obsMax, 0)}°）</span>` : "");
       if(!L2.length && O.length < 2) return "";
-      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温 · 当天临近预报（当地时）${L2.length ? "" : " · 今天的临近预报还没出"}</div>
+      return `<div class="muted" style="margin-top:12px;font-size:12px">今天逐小时气温（当地时）：彩色＝临近预报算的每小时气温，黑点＝机场实测${L2.length ? "" : " · 今天的临近预报还没出"}</div>
         <svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:auto" role="img" aria-label="今天逐小时气温">${g}</svg>
         <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:2px">${key}</div>`;
     })();
@@ -19368,7 +19425,7 @@ function wrfTmaxPanel(){
       <div class="muted mono">${heroSub}${TD.truth_c == null ? "" : ` · 实测 ${n(TD.truth_c, 0)}°C`}</div>
       <div class="muted" style="margin-top:10px;font-size:12px" title="三日预报按起报时次排（起报后约 8 小时出数），临近预报按出数时间；箭头＝比同一路的上一次（两路临近预报各比各的）">每次更新 · ${ups.length} 次${ups.length > shownUps.length ? `（显示最近 ${shownUps.length} 次）` : ""} · ${["gfs", "fcst", "nowcast", "nowcast_ig"].filter(k => ups.some(u => u.kind === k)).map(k => `<span style="color:${KCOL[k]}">■</span> ${KWORD[k]}`).join("　")}${bfUps.length ? `　<span style="color:${KCOL.bf}">□</span> ${KWORD.bf}（${bfUps.length} 次，只在图上）` : ""}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:12.5px">${chips}</div>
-      ${upChart ? `<div style="margin-top:8px">${upChart}</div>` : ""}${dayChart}</div>`;
+      ${dayChart}${tmChart || slotUpChart ? `<details style="margin-top:10px"><summary class="muted" style="font-size:12px;cursor:pointer">每一版预测的“今天最高”（按出数时间）</summary><div style="margin-top:6px">${tmChart || slotUpChart}</div></details>` : ""}</div>`;
     // The forecast leads (user 2026-10-31 「突出预报，弱化谁更准」「预报突出今天（每次的更新）」): today
     // and its updates, today's nowcast cards and issue curve, then the coming days; who was nearest
     // is one line, its last-seven-days table in the fold.
