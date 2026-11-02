@@ -16509,6 +16509,17 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-four .sd-det-h span:last-child,.sd-four .sd-det-f span:last-child{display:none}
 .sd-four .sd-det b{flex:0 0 auto;white-space:nowrap;font-size:12.5px;font-weight:600;margin:0;color:var(--text)}
 .sd-four .sd-det-f span:first-child{flex:0 0 2.6em;text-align:right;font-size:10px;white-space:nowrap}
+/* The chain's deterministic card: one compact row per model, two columns, so its
+   chips do not stretch the row the P0/P1 cards share (user 2026-11-02 「确定性预报内部的
+   模型卡片太大，导致p0和p1卡片有空白」): name, run, day maximum, change. */
+.sd-chain .sd-det-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px;margin-top:2px}
+.sd-chain .sd-det{display:flex;align-items:baseline;gap:5px;padding:3px 0;border:0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);border-radius:0;background:transparent}
+.sd-chain .sd-det-h,.sd-chain .sd-det-f{display:contents}
+.sd-chain .sd-det-h span:first-child{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)}
+.sd-chain .sd-det-h span:last-child{flex:0 0 auto;font-size:10px;color:var(--muted)}
+.sd-chain .sd-det b{flex:0 0 auto;white-space:nowrap;font-size:13px;font-weight:600;margin:0;color:var(--text)}
+.sd-chain .sd-det-f span:first-child{flex:0 0 2.8em;text-align:right;font-size:10.5px;white-space:nowrap}
+.sd-chain .sd-det-f span:last-child{display:none}
 .sd-four .sd-det-pick{font-size:11px}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
