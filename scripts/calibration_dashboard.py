@@ -7950,7 +7950,9 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 evidence = {}
         outcome = str(last[1]) if last else ""
         if active:
-            state, health = "已生效", "green"
+            # P0 is served by charter 281's regression; these scalars only
+            # shape its fallback vector (user 2026-11-02 「改成回退链」).
+            state, health = ("回退链在用", "green") if stage == "P0" else ("已生效", "green")
         elif outcome == "NOT_WIRED":
             state, health = "未接线", "amber"
         elif outcome == "ACCUMULATING":
@@ -16796,7 +16798,8 @@ border-color:transparent}
    that reads like a live one is the expensive failure here -- the page has
    carried both for weeks with nothing but the heading to tell them apart
    -- so the status is a word as well as a colour, and the words are the
-   same four everywhere: 已上线 / 影子 / 已关闭 / 读数. */
+   same five everywhere: 已上线 / 影子 / 已关闭 / 读数 / 回退链 (the last, user
+   2026-11-02 「改成回退链」: runs only where the live rule does not serve). */
 .lane{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
 margin:0 0 11px;padding:7px 11px;border-radius:8px;font-size:12.5px;
 background:var(--card);border:1px solid var(--line);
@@ -16804,6 +16807,7 @@ border-left:3px solid var(--line)}
 .lane[data-lane="live"]{border-left-color:var(--green)}
 .lane[data-lane="shadow"]{border-left-color:var(--amber)}
 .lane[data-lane="off"]{border-left-color:var(--red)}
+.lane[data-lane="fallback"]{border-left-color:var(--muted)}
 .lane-l{font-weight:640;color:var(--text);white-space:nowrap}
 .lane-r{color:var(--muted);flex:1 1 220px;min-width:200px}
 .lane-s{white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px}
@@ -16811,11 +16815,13 @@ border-left:3px solid var(--line)}
 /* The same state on the jump chip, so the bar says it too. */
 .jump button[data-lane="live"]::after,
 .jump button[data-lane="shadow"]::after,
-.jump button[data-lane="off"]::after{content:"";display:inline-block;
+.jump button[data-lane="off"]::after,
+.jump button[data-lane="fallback"]::after{content:"";display:inline-block;
 width:6px;height:6px;border-radius:50%;margin-left:5px;vertical-align:1px}
 .jump button[data-lane="live"]::after{background:var(--green)}
 .jump button[data-lane="shadow"]::after{background:var(--amber)}
 .jump button[data-lane="off"]::after{background:var(--red)}
+.jump button[data-lane="fallback"]::after{background:var(--muted)}
 /* The live flag reads as a switch because it is one: a control with two
    states and no third.  The old button said "切换" next to a word saying
    OFF, which asks the reader to work out which of the two the button is
@@ -18673,8 +18679,9 @@ function oosScores(){
 
 function centerWidth(){
   // Charter 150: P0 only; P0-M and P1 carry no centre/width correction.
-  const rows = (D.center_width || []).filter(r => r.stage === "P0");
-  if(!rows.length) return "";
+  // A kept value from older code is withheld until the backend recomputes it.
+  const rows = (Array.isArray(D.center_width) ? D.center_width : []).filter(r => r.stage === "P0");
+  if(!rows.length) return `<h2>中心/宽度</h2><p class="sub">读数等下一轮后台计算。</p>`;
   // The wait was two numbers in a muted line the reader had to subtract
   // (user ruling, 2026-09-12: 加显著的显式倒计时).  It is the card's most
   // actionable fact whenever a served scalar is stale -- P0 serves a width
@@ -26631,9 +26638,9 @@ const LANES = {
     role:"每家模型在每站每提前量偏多少度 → 服务时先把成员整体挪回来"},
   "单系统宽度校准": {layer:"概率层 · 单系统", status:"live",
     role:"成员分歧 × 放大倍数 = 真实误差 → 每家模型各自撒开或收拢"},
-  "融合权重表": {layer:"概率层 · 融合", status:"live",
+  "融合权重表": {layer:"概率层 · 融合", status:"fallback",
     role:"各家各占多少；过样本外检验才换代"},
-  "共识桥": {layer:"概率层 · 分布", status:"live",
+  "共识桥": {layer:"概率层 · 分布", status:"fallback",
     role:(()=>{const R=((D.consensus_bridge||{}).rule)||{}; return `中心差 >${R.gap_start_c??"—"}°C 时往中间补一块共识成分，${R.gap_full_c??"—"}°C 补满 ${R.lambda_max??"—"}（读自回执）`;})()},
 
   "P1 温度路径命中率": {layer:"P1 · 读数", status:"audit",
@@ -26642,16 +26649,23 @@ const LANES = {
     role:"根 × 硬下界 × e^f（第 161 条，直接在最终 P1 上拟合）；第 150 条的 g^α 退为回退。没有中心/宽度、band、天花板、路径先验、四层链"},
   "区域模型": {layer:"P1 · 区域模型", status:"live",
     role:"不进 P0 融合；P1 里只作那一次观测更新的协变量（剩余预报最高 − 已报最高、此刻误差）"},
-  "模型权重": {layer:"概率层", status:"live",
-    role:"服务路径此刻在用的那份配比，不是权重表的行数统计"},
+  "模型权重": {layer:"概率层 · 融合", status:"fallback",
+    role:"旧链此刻在用的那份配比（站点混合，宪章 199/242），不是权重表的行数统计"},
   "模型离散度": {layer:"概率层 · 读数", status:"audit",
     role:"成员之间分歧多大 → 服务宽度的原料"},
   "模型命中率": {layer:"概率层 · 读数", status:"audit",
     role:"订正到底有没有让点预报更准"},
   "OOS 打分": {layer:"概率层 · 读数", status:"audit",
     role:"样本外 CRPS / Brier / NLL 够不够格"},
-  "中心/宽度": {layer:"概率层", status:"live",
-    role:"中心平移多少、宽度收窄多少 → P0 服务分布的两个旋钮（第 150 条起只在 P0）"},
+  "中心/宽度": {layer:"概率层 · 分布", status:"fallback",
+    role:"中心平移多少、宽度收窄多少 → 旧链 P0 分布的两个旋钮（第 150 条起只在 P0）"},
+  // Charter 281: what P0 serves (user 2026-11-02 「前端所有单系统、融合层、分布层，都按照最新的增加核心的内容」).
+  "分布回归": {layer:"概率层 · 分布", status:"live",
+    role:"集合中心 + F 的一份 + 辐射 → 中心；提前量、集合离散度、确定性分歧 → 宽度；每日前推过 240 门才服务"},
+  "在服务的权重": {layer:"概率层 · 融合", status:"live",
+    role:"分布回归的家族权重 π = e^β，与确定性 F 按提前量取的份量"},
+  "确定性预报去偏": {layer:"概率层 · 单系统", status:"live",
+    role:"十家确定性各加全队偏差 → 中位数 F 进中心、分歧 Z 进宽度"},
   "真值离均值多远": {layer:"概率层 · 读数", status:"audit",
     role:"真值实际落在离服务均值几档 → 中心诚不诚实"},
   "逐站校准排序": {layer:"概率层 · 读数", status:"audit",
@@ -26686,6 +26700,14 @@ const LANES = {
   "逐站逐日明细": {layer:"实盘 · 读数", status:"audit",
     role:"每个站日实盘挂了哪些桶、买到了哪些"},
 };
+// The old chain is the fallback: say how many live station-days fall back to it now.
+(()=>{
+  const F = (D.p0_ngr || {}).fleet || {};
+  if(!F.station_days) return;
+  const n = F.station_days - (F.served || 0);
+  Object.values(LANES).filter(L => L.status === "fallback")
+    .forEach(L => { L.note = `分布回归（宪章 281）未服务的站日才走这条链；最近 ${F.hours} 小时 ${n} / ${F.station_days} 个站日在用`; });
+})();
 // Shown strategy lanes read their own switch from the live control payload.
 (()=>{
   const sw=(D.live_readiness||{}).strategy_lanes||{};
@@ -26695,13 +26717,14 @@ const LANES = {
       if(LANES[name] && key in sw) LANES[name].status = sw[key] ? "live" : "off";
     });
 })();
-const LANE_WORD = {live:"已上线", shadow:"影子", off:"已关闭", audit:"读数"};
-const LANE_TONE = {live:"green", shadow:"amber", off:"red", audit:""};
+const LANE_WORD = {live:"已上线", shadow:"影子", off:"已关闭", audit:"读数", fallback:"回退链"};
+const LANE_TONE = {live:"green", shadow:"amber", off:"red", audit:"", fallback:""};
 const LANE_NOTE = {
   live:"生产正在按它执行",
   shadow:"只记账，不改任何决策",
   off:"已接线但当前不在路径上",
   audit:"不是规则，是对已发生的事的测量",
+  fallback:"分布回归（宪章 281）未服务的站日才走这条链",
 };
 const laneStrip = (name) => {
   const L = LANES[name];
@@ -26930,7 +26953,7 @@ document.getElementById("app").innerHTML =
     // where a reader picks a section, so "is this one live or shadow" has
     // to be answerable before the click, not after it.
     const lane = node.dataset.lane;
-    const laneWord = {live:"已上线", shadow:"影子", off:"已关闭"}[lane];
+    const laneWord = {live:"已上线", shadow:"影子", off:"已关闭", fallback:"回退链"}[lane];
     // The station board's chip carries the station showing (sdNavStation
     // keeps it in step when the reader switches).
     const label = node.id === "sec-station-day" && typeof sdStationName === "function"
