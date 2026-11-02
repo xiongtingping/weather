@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-10-26T02:06:23Z",
+  "updated_at_utc": "2026-10-31T16:28:23Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane). Charter 231 (user rulings 2026-09-26 「调整下注规则」 and 「实盘上线，p＝天气模型」): the Proper 下注线 (proper_bet) replaces the basket's betting rule -- the basket is switched off here (it still compiles and records its decisions, which the new lane reads as its first decisions), and proper_bet opens on the P0 first decision. Charter 249 (user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」「限p0」): proper_bet reopens on rule v3 -- YES on the market's modal bucket only, resting, P0 and more than 36 hours out; its sides switch reads [\"YES\"]. The far-tail lane (tail_short) keeps running beside it: another lane's acknowledged rung on a different bucket no longer holds its takes back.",
   "lanes": {
     "basket": {
@@ -208,7 +208,7 @@
       "paused_at_utc": "2026-10-12T14:36:30Z"
     },
     "pair_maker": {
-      "enabled": true,
+      "enabled": false,
       "rule": "post_only_pair_bid_plus_one_lead_follow_v2",
       "pair_cost_cap": 0.95,
       "lead_side": "YES",
@@ -232,14 +232,15 @@
       "max_unmatched_ratio": 0.1,
       "warn_unmatched_ratio": 0.08,
       "ratio_min_total_shares": 20.0,
-      "max_station_day_usdc": 5.0,
+      "max_station_day_usdc": 15.0,
       "max_cash_fraction": 0.5,
       "max_new_plans_per_pass": 10,
       "send_book_fresh_seconds": 120.0,
       "live_ws_book": true,
       "merge": "simulate",
       "min_merge_shares": 10.0,
-      "enabled_at_utc": "2026-10-12T15:53:13Z"
+      "enabled_at_utc": "2026-10-12T15:53:13Z",
+      "paused_at_utc": "2026-10-31T16:28:23Z"
     },
     "fade_p0": {
       "enabled": false,
@@ -265,7 +266,7 @@
       "paused_at_utc": "2026-10-24T01:40:23Z"
     },
     "consensus_noon": {
-      "enabled": true,
+      "enabled": false,
       "rule": "noon_d0_p1_market_agree_yes_taker_v2",
       "entry_local_hour": 12,
       "entry_window_minutes": 60.0,
@@ -277,7 +278,7 @@
       "min_voters": 3,
       "min_ask": 0.05,
       "max_ask": 0.97,
-      "stake_usdc": 9.0,
+      "stake_usdc": 6.0,
       "walk_ticks": 0,
       "max_attempts_per_bucket": 3,
       "max_orders_per_bucket": 8,
@@ -290,7 +291,8 @@
       "note": "共识线 (charter 280; user ruling 2026-10-23 「做成车道」): at the first cycle inside local entry_local_hour..+entry_window_minutes of the event day, the board's estimates -- the listing's deterministic F, member-trajectory Bayes, D0, P1 and the market (MOS is not read: it needs network fetches the cycle does not make) -- are read once with estimate_hit_readings.picks_at; at least min_voters present and every one on the same bucket -> FOK YES on it at the best ask (min_ask..max_ask), up to stake_usdc, depth-capped, once a station-day, held to settlement. Read 10-15..10-22 (docs/research/estimate_convergence_20261023): 12 h all agreeing n70, hit 80% at a 0.71 ask, +13% a leg [+6,+22], 7 of 8 days positive; 10 h +12%, 11 h +4%, 13 h +1%; a cell picked among about twenty on 8 event days -- the lane is the forward read, re-read at 30 event days. Off by default: the board switch is the operator's.",
       "enabled_at_utc": "2026-10-23T07:00:51Z",
       "rule_changed_at_utc": "2026-10-23T08:00:00Z",
-      "rule_v2_note": "Charter 280 补记一 (user ruling 2026-10-23 「把共识线投票改成 D0+P1+市场三家全一致，当地 12 点，单笔 5 U 不变」): the voters are D0, P1 and the market, all present and on one bucket; F and member-trajectory Bayes are still read and written in votes_json, not counted. Read 10-15..10-22 at 12 h (docs/research/estimate_convergence_20261023, 补记一, subset_search.py): D0+P1+market n120, hit 75% at a 0.69 ask, +6.9% a leg [+3.7,+10.9], halves +10.8%/+3.0%, 7 of 8 days; no combination without D0 paid (P1+market -5.2%). v1 counted every estimate present, F included -- a five-way rule with under twenty legs on record."
+      "rule_v2_note": "Charter 280 补记一 (user ruling 2026-10-23 「把共识线投票改成 D0+P1+市场三家全一致，当地 12 点，单笔 5 U 不变」): the voters are D0, P1 and the market, all present and on one bucket; F and member-trajectory Bayes are still read and written in votes_json, not counted. Read 10-15..10-22 at 12 h (docs/research/estimate_convergence_20261023, 补记一, subset_search.py): D0+P1+market n120, hit 75% at a 0.69 ask, +6.9% a leg [+3.7,+10.9], halves +10.8%/+3.0%, 7 of 8 days; no combination without D0 paid (P1+market -5.2%). v1 counted every estimate present, F included -- a five-way rule with under twenty legs on record.",
+      "paused_at_utc": "2026-10-27T12:39:18Z"
     }
   }
 }

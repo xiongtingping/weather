@@ -80,12 +80,16 @@ def test_card_names_the_stored_reading():
         "systems": [{"system": "NOAA_GEFS_05", "run_init_utc": "2026-10-16T00:00:00Z", "members": 31, "ess": 6.2,
                      "bias_c": -0.4, "bias_from_p0": True, "reports_compared": 6, "best_rmse_c": 0.4,
                      "pool_weight": 0.5, "value_kind": "t2m_instant", "prior_mean_c": 22.5, "post_mean_c": 21.3}],
-        "history": [{"post_mean_c": 22.0, "prior_mean_c": 22.6}, {"post_mean_c": 21.4, "prior_mean_c": 22.6}]}}
+        "history": [{"as_of_utc": "2026-10-16T02:00:00Z", "post_mean_c": 22.0, "prior_mean_c": 22.6},
+                    {"as_of_utc": "2026-10-16T03:00:00Z", "post_mean_c": 21.4, "prior_mean_c": 22.6}]}}
+    chart = source.index("function sdAxisOpts(")
+    chart_end = source.index("function sdD0Trend(")
     script = ("const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
+              "const SD_COL = {P0: 'a', 'P0-M': 'b', P1: 'c', MKT: 'd', DET: 'e', MB: 'f', D0: 'g'};\n"
               "const sdN = (v, d) => v == null ? '—' : Number(v).toFixed(d);\n"
               "const sdSg = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);\n"
               "const sdPc = (v, d) => (100 * v).toFixed(d) + '%';\n"
-              + source[start:fn] + source[fn:end] + f"\nconsole.log(sdMemberBayes({json.dumps(day, ensure_ascii=False)}));"
+              + source[chart:chart_end] + source[start:fn] + source[fn:end] + f"\nconsole.log(sdMemberBayes({json.dumps(day, ensure_ascii=False)}));"
               + "\nconsole.log(sdMemberBayes({member_bayes: {state: 'no_trajectories'}}));\n")
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr

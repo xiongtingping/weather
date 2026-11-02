@@ -25,6 +25,7 @@ from scripts.build_metar_phase_hazard_samples import (  # noqa: E402
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     build_station_day,
     load_day_observations,
+    _record_station_day_failure,
     sample_instant,
 )
 
@@ -414,3 +415,92 @@ def test_roots_are_ordered_by_instant_not_by_spelling() -> None:
     chosen = root_at(roots, datetime(2026, 8, 28, 18, 0, 0, 200000, tzinfo=timezone.utc))
     assert chosen is not None
     assert chosen[1]["checkpoint_id"] == "p0-root-fixture"
+
+
+@pytest.mark.parametrize("missing_parent", [False, True])
+def test_failed_station_day_write_preserves_both_errors_in_status_tail(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    missing_parent: bool,
+) -> None:
+    """A failed exclusion write must preserve the earlier station-day error.
+
+    The hosted sweep stores only a short output tail.  Keep the diagnostic
+    useful inside that limit while reporting the SQLite codes and the
+    contemporaneous output-directory state.
+    """
+
+    with pytest.raises(sqlite3.OperationalError) as write_error:
+        sqlite3.connect(tmp_path / "missing-output" / "samples.db")
+    out_path = tmp_path / "p1_observation_samples.db.new"
+    if missing_parent:
+        out_path = tmp_path / "unavailable-parent" / out_path.name
+
+    class FailedOutput:
+        def execute(self, *_args, **_kwargs):
+            raise write_error.value
+
+    try:
+        sqlite3.connect(tmp_path / "missing-source" / "source.db")
+    except sqlite3.Error as original_error:
+        recorded = _record_station_day_failure(
+            out=FailedOutput(),
+            station_id="KATL",
+            event_date="2026-10-22",
+            original_error=original_error,
+            out_path=out_path,
+        )
+    else:
+        pytest.fail("the fixture must produce the original SQLite error")
+    output = capsys.readouterr().err
+    diagnostic = output.strip().splitlines()[-1]
+    failure_tail = (
+        output
+        + "sample build failed; the refit below reads yesterday's samples"
+    )[-300:]
+
+    assert not recorded
+    assert "unable to open database file" in output
+    assert "SQLITE_CANTOPEN" in output
+    assert "During handling of the above exception" in output
+    assert "P1DBFAIL st=KATL d=2026-10-22" in diagnostic
+    assert diagnostic.count("SQLITE_CANTOPEN") == 2
+    assert "p1_observation_samples.db.new" in diagnostic
+    assert "journal=missing" in diagnostic
+    assert len(diagnostic) <= 220
+    assert diagnostic in failure_tail
+    if missing_parent:
+        assert "dir=0/0" in diagnostic
+        assert "freeMiB=?" in diagnostic
+    else:
+        assert "dir=1/1" in diagnostic
+        assert "freeMiB=" in diagnostic
+
+
+def test_station_day_failure_record_is_still_written() -> None:
+    out = sqlite3.connect(":memory:")
+    out.execute(
+        "CREATE TABLE metar_phase_hazard_exclusion("
+        "station_id TEXT,event_date TEXT,reason TEXT,detail TEXT,count INTEGER)"
+    )
+
+    try:
+        raise RuntimeError("station-day fixture failure")
+    except RuntimeError as original_error:
+        recorded = _record_station_day_failure(
+            out=out,
+            station_id="KATL",
+            event_date="2026-10-22",
+            original_error=original_error,
+            out_path=Path("samples.db.new"),
+        )
+
+    assert recorded
+    assert out.execute(
+        "SELECT station_id,event_date,reason,detail,count "
+        "FROM metar_phase_hazard_exclusion"
+    ).fetchone() == (
+        "KATL", "2026-10-22", "station_day_failed",
+        "RuntimeError: station-day fixture failure", 1,
+    )
+    out.close()

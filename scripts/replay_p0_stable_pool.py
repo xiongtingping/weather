@@ -62,6 +62,7 @@ from bayes_basket_target.stable_pool import (  # noqa: E402
     stable_pool_weights,
 )
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402
+from scripts.strict_replay_clock import case_truth_known, training_fingerprint  # noqa: E402
 
 SCHEMA = "p0_stable_pool_replay_update_v3"
 CUTOFF_UTC = "2026-09-14T00:00:00Z"
@@ -135,13 +136,12 @@ class Forecasts:
             case for case in self.cases_by_scope[scope]
             if start <= case["event_date"] < event_date
             and self.arrival_of(scope, case) < knowable
-            and case["event_date"] in self.first_commit
-            and self.first_commit[case["event_date"]] < knowable
+            and case_truth_known(case, knowable)
         ]
 
     def forecast(self, scope, case, knowable: datetime) -> dict[str, Any] | None:
         train = self.train(scope, case["event_date"], knowable)
-        key = (scope, case["event_date"], case["member_set_sha256"], tuple(c["event_date"] for c in train))
+        key = (scope, case["event_date"], case["member_set_sha256"], training_fingerprint(train))
         if key in self.memo:
             return self.memo[key]
         if len(train) < MIN_TRAIN:

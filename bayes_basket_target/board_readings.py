@@ -2831,6 +2831,9 @@ def _skew_point(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]], 
         "floor": bool(axis and "lo_c" in axis[0] and skew_floor(mode, axis, running_high_c)),
         "mode": mode, "mean_bucket": mean_center_bucket_v1(probs, ords),
         "truth_side": (truth_ord > mode_ord) - (truth_ord < mode_ord),
+        # Rungs from the mode to the truth along the ladder (user 2026-10-17
+        # 「分别统计左偏（众数-1桶）、对称（众数）、右偏（众数+1桶）的真值命中率」).
+        "truth_step": sorted(ords.values()).index(truth_ord) - sorted(ords.values()).index(mode_ord),
         "claim": [sum(p for b, p in probs.items() if ords[b] < mode_ord) / total,
                   probs[mode] / total,
                   sum(p for b, p in probs.items() if ords[b] > mode_ord) / total],
@@ -2932,6 +2935,8 @@ def _skew_side_group(points: Sequence[Mapping[str, Any]], truth_buckets: Sequenc
         "claim": [sum(p["claim"][i] for p in points) / n for i in range(3)],
         "mode_hit": sum(p["mode"] == t for p, t in zip(points, truth_buckets)) / n,
         "mean_hit": sum(p["mean_bucket"] == t for p, t in zip(points, truth_buckets)) / n,
+        # The truth in the bucket below the mode, on it, above it.
+        "adjacent_hit": [sum(p["truth_step"] == k for p in points) / n for k in (-1, 0, 1)],
     }
 
 

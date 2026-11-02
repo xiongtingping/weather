@@ -108,3 +108,9 @@ def test_the_resident_keeps_the_failure_reasons(daemon, monkeypatch, tmp_path):
     assert state["failed_count"] == 2
     assert state["failed_reasons"] == {"OSError:forecast_physics_http_status_429": 2}
     assert state["deferred_past_deadline"] == 2
+
+
+def test_forecast_physics_is_captured_hourly(daemon) -> None:
+    # user 2026-10-17 「都取最新的」: P0 (recompiled every one to two hours)
+    # must read a radiation total no older than an hour's capture.
+    assert daemon.FORECAST_PHYSICS_REFRESH_SECONDS == 60 * 60

@@ -243,6 +243,7 @@ def test_inside_the_horizon_with_no_row_added_nothing_is_walked_or_read_again(
 
 APPENDED_EVALUATIONS = "SELECT rowid,run_cycle,run_cycle_by_system_json"
 APPENDED_ACTIVATIONS = "SELECT a.rowid,a.activation_id"
+APPENDED_EVALUATION_KEYS = "SELECT rowid,station_id,season_bin,lead_bucket"
 
 
 def _full_tests(flat: list[str]) -> int:
@@ -319,6 +320,16 @@ def _answers(conn: sqlite3.Connection, at: str):
         return ("ok", _compile(conn, at))
     except ContractError as exc:
         return ("refused", str(exc))
+
+
+def _traced_answers(conn: sqlite3.Connection, at: str):
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    try:
+        answer = _answers(conn, at)
+    finally:
+        conn.set_trace_callback(None)
+    return answer, [" ".join(statement.split()) for statement in statements]
 
 
 def test_a_re_mint_of_this_scope_is_stepped_to_the_walk_s_answer(
@@ -513,6 +524,75 @@ def test_a_re_mint_elsewhere_does_not_walk_a_scope_whose_ids_are_unchanged(
     assert _count(flat, "SELECT rowid,artifact_kind,station_id") == 1
     monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
     assert later == _compile(conn, "2026-07-01T13:07:00Z")
+
+
+def _append_unrelated_evaluations(
+    conn: sqlite3.Connection, count: int
+) -> None:
+    table = "calibration_cross_native_ensemble_oos_evaluation"
+    columns = [
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({table})")
+    ]
+    source = list(conn.execute(f"SELECT * FROM {table} LIMIT 1").fetchone())
+    positions = {column: index for index, column in enumerate(columns)}
+    insert_sql = (
+        f"INSERT INTO {table}({','.join(columns)}) "
+        f"VALUES({','.join('?' for _ in columns)})"
+    )
+    def rows():
+        for index in range(count):
+            row = list(source)
+            row[positions["evaluation_id"]] = (
+                f"unrelated-evaluation-{index:06d}"
+            )
+            row[positions["station_id"]] = "ELSEWHERE"
+            row[positions["oos_metrics_json"]] = "{}"
+            row[positions["climatology_baseline_metrics_json"]] = "{}"
+            row[positions["content_sha256"]] = f"{index + 1:064x}"
+            yield tuple(row)
+
+    conn.executemany(insert_sql, rows())
+    conn.commit()
+
+
+def test_a_large_fleet_append_with_scope_update_keeps_the_incremental_answer(
+    tmp_path, monkeypatch
+) -> None:
+    """A real update in this scope must stay incremental when fleet-wide
+    appends exceed 20,000 but remain inside the hard 100,000-row scan bound."""
+
+    conn, report = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    _append_unrelated_evaluations(
+        conn, P0.ADMITTED_INCREMENT_ROWS_MAX + 1
+    )
+    _reject(conn, report, "2026-07-01T13:01:00Z")
+
+    later, flat = _traced_answers(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat, APPENDED_EVALUATION_KEYS) == 1
+    assert _count(flat, *WALKS) == 0 and _full_tests(flat) == 0
+
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert later == _answers(conn, "2026-07-01T13:07:00Z")
+
+
+def test_the_append_scan_limit_still_falls_back_to_a_full_walk(
+    tmp_path, monkeypatch
+) -> None:
+    """The incremental path retains its hard global scan bound."""
+
+    conn, report = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    monkeypatch.setattr(P0, "_APPENDED_ROWS_MAX", 2)
+    _append_unrelated_evaluations(conn, 3)
+    _reject(conn, report, "2026-07-01T13:01:00Z")
+
+    later, flat = _traced_answers(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat, WALKS[1]) == 1 and _full_tests(flat) == 1
+
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert later == _answers(conn, "2026-07-01T13:07:00Z")
 
 
 def test_a_re_mint_of_this_scope_is_looked_at_again(tmp_path, monkeypatch) -> None:

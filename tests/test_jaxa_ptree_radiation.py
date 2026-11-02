@@ -196,7 +196,7 @@ def test_the_cloud_cell_and_its_column() -> None:
     sky = source[source.index("function sdSky(day){"):]
     assert sky.index("const satCloud") < sky.index("const rows = ")   # declared before the rows use it
     start = source.index("function sdSatCloudCell(r){")
-    end = source.index("function sdRadTotal(R){")
+    end = source.index("function sdRadTotal(R, H){")
     script = ('const sdEsc = s => String(s == null ? "" : s);\n'
               'const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);\n'
               'function sdLocal(t){ return String(t).slice(5, 16); }\n' + source[start:end]

@@ -2773,8 +2773,12 @@ def _atomic_json(path: Path, value: Any) -> None:
     print(f"[weather_basket_yes] status_write_deferred:{type(last_error).__name__}:{last_error}", file=sys.stderr)
 
 
-FORECAST_PHYSICS_REFRESH_SECONDS = 6 * 60 * 60
-# The six-hourly steps of the forecast turn remember their last attempt across
+# Hourly (user 2026-10-17 「都取最新的」): at six hours P0 kept compiling on a
+# radiation total hours older than the forecast the board showed (ZUUU 10-18:
+# 8.58 captured 10:07Z against 9.27 at 14:48Z).  P0 recompiles every one to
+# two hours; a round is 48 calls (~1,150 a day of the address's 10,000).
+FORECAST_PHYSICS_REFRESH_SECONDS = 60 * 60
+# The periodic steps of the forecast turn remember their last attempt across
 # restarts.  Their due times lived only on the worker, so every restart made
 # them due at once and the first forecast turn of every generation ran the
 # physics capture (108-178s) and the calibration audit (32-46s) while holding
@@ -3657,9 +3661,8 @@ def run_target_forecast_refresh_cycle(
     # bounded off-path worker rather than a separate timer: it is one bounded
     # HTTPS read per station, it must land before the day it describes is
     # traded, and a failure here must not touch P1, truth, labels, WS or any
-    # decision -- exactly the contract this cycle already carries.  Once a
-    # day is enough; the forecast for a day two days out does not move
-    # faster than the capture window.
+    # decision -- exactly the contract this cycle already carries.  Hourly,
+    # so P0 reads the newest forecast (FORECAST_PHYSICS_REFRESH_SECONDS).
     step_timings_ms["forward_taf"] = round(
         (time.perf_counter() - step_started) * 1000.0, 1
     )

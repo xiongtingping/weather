@@ -666,7 +666,7 @@ def build(
         receipt["source_staged"] = staged
         conn.execute("PRAGMA out.journal_mode=TRUNCATE")       # a kill mid-chunk rolls back
         conn.execute("PRAGMA out.synchronous=OFF")             # a failed build is deleted
-        conn.execute("PRAGMA out.cache_size=-1048576")         # 1 GiB
+        conn.execute(f"PRAGMA out.cache_size=-{int(__import__('os').environ.get('PM_REBUILD_OUT_CACHE_KIB', 1048576))}")  # 1 GiB unless told
         stopped = _copy_rows(conn, tables, state, deadline=deadline, t0=t0,
                              transform=not staged, on_table=_save)
         if stopped is not None:

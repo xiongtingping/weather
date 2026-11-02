@@ -1226,3 +1226,99 @@ def test_emptied_book_is_not_carried_into_the_next_generation(
     assert scope["quotes_by_token"][kept]["book_observed_at"] == "2026-07-28T01:59:00Z"
     assert "asks" not in scope["quotes_by_token"][emptied]
     assert set(carried) == {kept}
+
+
+def test_a_slow_catalog_probe_does_not_stop_manifest_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """2026-10-19: the 5 s catalog probe ran on the event loop and, at 5-17 s a
+    read under machine load, kept the loop inside SQLite most of the time --
+    manifest gaps of 210-1934 s and a manual order refused on a 3-minute-old
+    book.  The probe now runs in a thread; writes keep coming while it is out."""
+
+    import threading
+    import time as _time
+
+    db = tmp_path / "target.db"
+    _database(db)
+    catalog = _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
+    writes: list[float] = []
+    probe_running = threading.Event()
+    probe_threads: list[str] = []
+    monkeypatch.setattr(publisher, "assert_process_memory_budget", lambda **_: None)
+    monkeypatch.setattr(publisher, "write_bounded_json", lambda *_a, **_k: writes.append(_time.monotonic()))
+    monkeypatch.setattr(publisher, "RECEIVE_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(publisher, "MANIFEST_WRITE_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(publisher, "MANIFEST_LIVENESS_WRITE_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(publisher, "SCOPE_REFRESH_SECONDS", 0.0)
+
+    def slow_probe(**_):
+        probe_threads.append(threading.current_thread().name)
+        probe_running.set()
+        _time.sleep(0.6)                      # a slow read, in its worker thread
+        probe_running.clear()
+        return catalog
+
+    monkeypatch.setattr(publisher, "_timed_scope", slow_probe)
+    written_during_probe: list[int] = []
+
+    async def receive(shard, *, queue, proxy):
+        sid = int(shard["shard_id"])
+        await queue.put((sid, json.dumps([json.loads(_book_frame(str(t))) for t in shard["tokens"]])))
+        for _ in range(30):
+            await asyncio.sleep(0.03)
+            await queue.put((sid, json.dumps({"event_type": "last_trade_price"})))
+            if probe_running.is_set():
+                written_during_probe.append(len(writes))
+        raise ConnectionError("done")
+
+    monkeypatch.setattr(publisher, "_receive_connection_shard", receive)
+    with pytest.raises(ConnectionError, match="done"):
+        asyncio.run(publisher._publish_connection(catalog, db_path=db, output_path=tmp_path / "m.json", proxy=None))
+    assert probe_threads and all(name != "MainThread" for name in probe_threads)
+    # the manifest kept being written while a probe was out
+    assert written_during_probe and written_during_probe[-1] > written_during_probe[0]
+
+
+def test_planned_refresh_waits_for_a_generation_to_publish_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """2026-10-19: under load a generation had not written by its 30 s planned
+    refresh, was torn down, and the next restarted the venue's dump -- 4-5
+    generations in a row with no manifest.  A generation that has not
+    published gets one more interval; one that has is recycled on time."""
+
+    import time as _time
+
+    db = tmp_path / "target.db"
+    _database(db)
+    catalog = _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
+    monkeypatch.setattr(publisher, "assert_process_memory_budget", lambda **_: None)
+    monkeypatch.setattr(publisher, "write_bounded_json", lambda *_a, **_k: None)
+    monkeypatch.setattr(publisher, "RECEIVE_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(publisher, "SCOPE_REFRESH_SECONDS", 1000.0)
+    monkeypatch.setattr(publisher, "CONNECTION_REFRESH_SECONDS", 0.2)
+
+    def run(receive) -> float:
+        monkeypatch.setattr(publisher, "_receive_connection_shard", receive)
+        started = _time.monotonic()
+        with pytest.raises(publisher.ConnectionRefreshRequired):
+            asyncio.run(publisher._publish_connection(catalog, db_path=db, output_path=tmp_path / "m.json", proxy=None))
+        return _time.monotonic() - started
+
+    async def silent(shard, *, queue, proxy):          # sockets open, no book ever arrives: nothing to write
+        while True:
+            await asyncio.sleep(0.01)
+            await queue.put((int(shard["shard_id"]), None))
+
+    async def speaking(shard, *, queue, proxy):        # books arrive: the generation publishes
+        sid = int(shard["shard_id"])
+        await queue.put((sid, json.dumps([json.loads(_book_frame(str(t))) for t in shard["tokens"]])))
+        while True:
+            await asyncio.sleep(0.01)
+            await queue.put((sid, json.dumps({"event_type": "last_trade_price"})))
+
+    assert run(speaking) < 0.35                         # recycled on time
+    assert run(silent) >= 0.4                           # given one more interval first

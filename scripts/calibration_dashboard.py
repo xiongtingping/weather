@@ -14289,6 +14289,7 @@ def _paged_elapsed() -> float:
 
 #: The render's own health review (user 2026-10-21 「系统健康增加渲染的健康审查」).
 RENDER_COMPUTE_STAMP = ROOT / "data" / "dashboard_render.compute_started"
+RENDER_COMPUTE_END_STAMP = ROOT / "data" / "dashboard_render.compute_ended"
 RENDER_COMPUTE_EVERY_SEC = 1800.0
 HEALTH_SWEEP_LOG = ROOT / "data" / "logs" / "dashboard_health.out.log"
 RESEARCH_PAGE_OVERDUE_SEC = 24 * 3600.0
@@ -14311,7 +14312,21 @@ def _render_health(now: datetime | None = None) -> dict[str, Any]:
         stamp = datetime.fromtimestamp(RENDER_COMPUTE_STAMP.stat().st_mtime, timezone.utc)
     except OSError:
         stamp = _parse_utc_opt(compute.get("started_at_utc"))
+    try:
+        ended_stamp = datetime.fromtimestamp(
+            RENDER_COMPUTE_END_STAMP.stat().st_mtime, timezone.utc
+        )
+    except OSError:
+        ended_stamp = None
     started = _parse_utc_opt(compute.get("started_at_utc"))
+    summary_matches_start = (
+        stamp is not None and started is not None
+        and started >= stamp - timedelta(seconds=60)
+        and started <= moment + timedelta(seconds=60)
+    )
+    run_ended = (
+        stamp is not None and ended_stamp is not None and ended_stamp >= stamp
+    )
     # 1. Cadence: a compute starts every RENDER_COMPUTE_EVERY_SEC.
     if stamp is not None:
         idle = (moment - stamp).total_seconds()
@@ -14320,13 +14335,31 @@ def _render_health(now: datetime | None = None) -> dict[str, Any]:
         elif idle >= 1.5 * RENDER_COMPUTE_EVERY_SEC:
             checks.append(("amber", f"整页计算 {idle / 60:.0f} 分钟没开始"))
     # 2. The last compute: killed before it wrote its summary, or at its deadline.
-    if stamp is not None and started is not None and (stamp - started).total_seconds() > 60:
-        running = (moment - stamp).total_seconds()
-        if running > RENDER_HARD_DEADLINE_SEC + 180:
-            checks.append(("red", f"上一轮整页计算 {running / 60:.0f} 分钟没写下结果（被杀或卡住）"))
-    elif float(compute.get("build_sec") or 0.0) >= RENDER_HARD_DEADLINE_SEC:
-        checks.append(("amber", f"上一轮整页计算撞到 {RENDER_HARD_DEADLINE_SEC:.0f} 秒截止"))
-    stale = dict(((compute.get("paged") or {}).get("stale_sections")) or {})
+    if stamp is not None and not summary_matches_start:
+        if run_ended:
+            checks.append(("amber", "上一轮整页计算已结束，但没有本轮结果摘要"))
+        else:
+            running = (moment - stamp).total_seconds()
+            if running > RENDER_HARD_DEADLINE_SEC + 180:
+                checks.append(("red", f"上一轮整页计算 {running / 60:.0f} 分钟没写下结果（被杀或卡住）"))
+    elif summary_matches_start:
+        status = str(compute.get("compute_status") or "")
+        if status == "yielded":
+            checks.append(("amber", "上一轮整页计算已让出给生产写者；未完成区块等待下轮"))
+        elif status == "failed":
+            detail = str(compute.get("compute_detail") or "").strip()
+            checks.append(("red", "上一轮整页计算失败" + (f"：{detail}" if detail else "")))
+        elif float(compute.get("build_sec") or 0.0) >= RENDER_HARD_DEADLINE_SEC:
+            checks.append(("amber", f"上一轮整页计算撞到 {RENDER_HARD_DEADLINE_SEC:.0f} 秒截止"))
+    # A summary belongs to the latest render only when it did not predate the
+    # start stamp.  The Python process records its start after imports, so a
+    # slow startup can put it several minutes after the shell's marker.
+    # Otherwise its stale-section list describes yesterday's pass while
+    # today's render may still be progressing or may have yielded.
+    stale = (
+        dict(((compute.get("paged") or {}).get("stale_sections")) or {})
+        if summary_matches_start else {}
+    )
     # 3. Every-run sections the last compute served from their last value.
     late = sorted(
         name for name, reason in stale.items()
@@ -14373,7 +14406,8 @@ def _render_health(now: datetime | None = None) -> dict[str, Any]:
         "note": "；".join(text for _h, text in checks),
         "checks": [{"health": h, "text": t} for h, t in checks],
         "compute_started_at_utc": None if stamp is None else stamp.isoformat().replace("+00:00", "Z"),
-        "compute_build_sec": compute.get("build_sec"),
+        "compute_build_sec": compute.get("build_sec") if summary_matches_start else None,
+        "compute_status": compute.get("compute_status") if summary_matches_start else None,
     }
 
 
@@ -27693,6 +27727,62 @@ def refresh_health_sections(db: Path) -> str:
     return "health sections refreshed: " + ", ".join(done)
 
 
+def _compute_run_summary(
+    started_at: float,
+    *,
+    render: Mapping[str, Any] | None = None,
+    status: str,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    """Persist the outcome even when a paged render yields or fails.
+
+    Each completed section already has its own durable page.  The run record
+    is the matching index for the health reader, so omitting it on a normal
+    WAL yield made that reader mistake the previous run for this one.
+    """
+
+    result = dict(render or {})
+    if render is None:
+        slowest = sorted(
+            (
+                {
+                    "section": name,
+                    "build_sec": float(entry["build_sec"]),
+                    "cached": bool(entry.get("cached")),
+                }
+                for name, entry in _SECTION_CACHE_LOG.items()
+                if entry.get("build_sec") is not None
+            ),
+            key=lambda row: -row["build_sec"],
+        )
+        result.update({
+            "generated_at_utc": None,
+            "build_sec": round(max(0.0, time.time() - started_at), 1),
+            "computed_sec": round(sum(row["build_sec"] for row in slowest), 1),
+            "computed_sections": len(slowest),
+            "reused_sections": sum(
+                1 for entry in _SECTION_CACHE_LOG.values() if entry.get("reused")
+            ),
+            "slowest": slowest[:12],
+        })
+        if _PAGED_RUN:
+            result["paged"] = {
+                "gap_wait_sec": round(float(_PAGED_RUN.get("gap_wait_sec") or 0.0), 1),
+                "yields": int(_PAGED_RUN.get("yields") or 0),
+                "stale_sections": dict(_PAGED_RUN.get("stale") or {}),
+                "soft_budget_sec": RENDER_SOFT_BUDGET_SEC,
+            }
+    result.update({
+        "started_at_utc": datetime.fromtimestamp(started_at, timezone.utc)
+        .isoformat().replace("+00:00", "Z"),
+        "finished_at_utc": _now().isoformat().replace("+00:00", "Z"),
+        "compute_status": status,
+    })
+    if detail:
+        result["compute_detail"] = " ".join(detail.split())[:240]
+    return result
+
+
 def reinflate(target: Path, renderer: Any | None = None) -> str:
     """Hot update: the template on disk around the last full build's payload.
 
@@ -27846,14 +27936,24 @@ def main() -> int:
         try:
             payload = build_payload(database)
         except RenderYielded as yielded:
+            summary = _compute_run_summary(
+                started_at, status="yielded", detail=str(yielded),
+            )
+            _save_closed_readings(COMPUTE_RUN_FILE, summary)
+            _save_every_run_costs()
+            _PAGED_RUN.clear()
             print(f"compute yielded to the writer ({yielded}); kept what it read")
             return 0
-        summary = {
-            "started_at_utc": datetime.fromtimestamp(started_at, timezone.utc)
-            .isoformat().replace("+00:00", "Z"),
-            "finished_at_utc": _now().isoformat().replace("+00:00", "Z"),
-            **dict(payload.get("render") or {}),
-        }
+        except Exception as exc:  # noqa: BLE001 -- record, then preserve failure
+            summary = _compute_run_summary(
+                started_at, status="failed", detail=f"{type(exc).__name__}: {exc}",
+            )
+            _save_closed_readings(COMPUTE_RUN_FILE, summary)
+            _PAGED_RUN.clear()
+            raise
+        summary = _compute_run_summary(
+            started_at, render=dict(payload.get("render") or {}), status="completed",
+        )
         _save_closed_readings(COMPUTE_RUN_FILE, summary)
         print(f"computed in {summary.get('build_sec')}s")
         return 0

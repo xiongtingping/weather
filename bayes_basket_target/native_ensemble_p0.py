@@ -1910,7 +1910,8 @@ ADMITTED_SCOPE_MEMO_ENABLED = (
     not in {"0", "off", "false", "no"}
 )
 ADMITTED_SCOPE_MEMO_MAX_SCOPES = 512
-# Appended rows past which a kept scope is walked whole instead of stepped.
+# Near-mark reach used to lower the increment base when a walk sees rows
+# stamped just ahead of its decision instant.
 ADMITTED_INCREMENT_ROWS_MAX = 20_000
 SELECTION_WEIGHTS_MEMO_MAX = 100_000
 # key -> (digest, admitted ids, admitted pairings' evaluation rows,
@@ -2941,11 +2942,16 @@ def compile_native_ensemble_p0(
         if decision_at_utc >= ahead_at:
             declined.append("row_ahead_in_view")
             return None
+        # Keep this guard aligned with _appended_since's bounded row window.
+        # ADMITTED_INCREMENT_ROWS_MAX is only the near-mark reach used while
+        # establishing a safe base; using it here made a small, relevant
+        # update fall back to walking every historical activation whenever
+        # fleet-wide appends crossed 20,000 rows.
         if (
             base[0] > marks[0]
             or base[1] > marks[1]
-            or marks[0] - base[0] > ADMITTED_INCREMENT_ROWS_MAX
-            or marks[1] - base[1] > ADMITTED_INCREMENT_ROWS_MAX
+            or marks[0] - base[0] > _APPENDED_ROWS_MAX
+            or marks[1] - base[1] > _APPENDED_ROWS_MAX
         ):
             declined.append("too_many_appended")
             return None

@@ -1183,6 +1183,14 @@ async def _publish_connection(
     last_manifest_write = 0.0
     economic_dirty = False
     liveness_dirty = False
+    # The catalog probe runs in a worker thread (2026-10-19): run inline it
+    # stopped this event loop for the whole read, and under machine load the
+    # read took 5-17 s while the next one was due 5 s after it finished -- the
+    # loop spent ~3/4 of its time inside SQLite, receiving nothing and
+    # writing nothing (manifest_gap 210-1934 s that day; 熊先生's ticket
+    # refused a 3-minute-old book).  The loop now keeps receiving, confirming
+    # and writing while a probe is out; its result is acted on when it lands.
+    probe: asyncio.Task[dict[str, Any]] | None = None
     try:
         while True:
             for shard_id, task in tasks.items():
@@ -1274,12 +1282,25 @@ async def _publish_connection(
                 liveness_dirty = True
             if _future_probability_expired(catalog, observed_at_utc=observed_at):
                 raise ScopeCatalogChanged("resident_target_ws_probability_expired")
-            if time.monotonic() >= connection_refresh_deadline:
+            # A planned refresh recycles a generation that has published; one
+            # that has not written yet is given one more interval first --
+            # tearing it down only restarts the venue's initial dump, and under
+            # load that turned into 4-5 generations in a row with no write.
+            refresh_now = time.monotonic()
+            if refresh_now >= connection_refresh_deadline and (
+                last_manifest_write > 0.0
+                or refresh_now >= connection_refresh_deadline + CONNECTION_REFRESH_SECONDS
+            ):
                 raise ConnectionRefreshRequired(
                     "resident_target_ws_planned_refresh"
                 )
-            if time.monotonic() >= next_scope_probe:
-                refreshed = _timed_scope(db_path=db_path, as_of_utc=observed_at)
+            if probe is None and time.monotonic() >= next_scope_probe:
+                probe = asyncio.create_task(asyncio.to_thread(
+                    _timed_scope, db_path=db_path, as_of_utc=observed_at,
+                ))
+            if probe is not None and probe.done():
+                refreshed = probe.result()
+                probe = None
                 if (
                     refreshed["subscription_sha256"]
                     != catalog["subscription_sha256"]
@@ -1344,6 +1365,11 @@ async def _publish_connection(
         for task in tasks.values():
             task.cancel()
         await asyncio.gather(*tasks.values(), return_exceptions=True)
+        if probe is not None:
+            # The thread finishes its read and closes its own connection; only
+            # the waiting task is dropped.
+            probe.cancel()
+            await asyncio.gather(probe, return_exceptions=True)
 
 
 async def run_resident_target_ws_publisher(
@@ -1363,7 +1389,8 @@ async def run_resident_target_ws_publisher(
                 "Z",
             )
             _PUBLISH_TRACE["connections"] += 1
-            catalog = _timed_scope(db_path=db_path, as_of_utc=as_of_utc)
+            # Off the event loop too: the listener's other tasks share it.
+            catalog = await asyncio.to_thread(_timed_scope, db_path=db_path, as_of_utc=as_of_utc)
             await _publish_connection(
                 catalog,
                 db_path=Path(db_path).expanduser().resolve(),

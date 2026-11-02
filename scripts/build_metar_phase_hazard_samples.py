@@ -52,8 +52,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
+import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -758,6 +760,109 @@ def build_station_day(
     return samples, exclusions
 
 
+def _sample_db_failure_label(exc: BaseException) -> str:
+    code = getattr(exc, "sqlite_errorcode", None)
+    name = getattr(exc, "sqlite_errorname", None)
+    if name is not None or code is not None:
+        label = f"{name or 'SQLITE_UNKNOWN'}({code if code is not None else '?'})"
+    else:
+        message = " ".join(str(exc).split())
+        label = f"{type(exc).__name__}:{message}"
+    return label[:30]
+
+
+def _sample_db_path_label(path: Path) -> str:
+    try:
+        resolved = path.resolve(strict=False)
+    except (OSError, RuntimeError):
+        resolved = path
+    try:
+        label = resolved.relative_to(ROOT).as_posix()
+    except ValueError:
+        label = Path(*resolved.parts[-4:]).as_posix()
+    return label[-72:]
+
+
+def _sample_db_file_state(path: Path) -> str:
+    try:
+        return str(path.stat().st_size)
+    except FileNotFoundError:
+        return "missing"
+    except OSError as exc:
+        return f"err{exc.errno or '?'}"
+
+
+def _sample_db_write_failure_diagnostic(
+    *,
+    station_id: str,
+    event_date: str,
+    original_error: BaseException,
+    write_error: BaseException,
+    out_path: Path,
+) -> str:
+    parent = out_path.parent
+    try:
+        parent_exists = parent.is_dir()
+        parent_writable = parent_exists and os.access(
+            parent, os.W_OK | os.X_OK
+        )
+    except OSError:
+        parent_exists = False
+        parent_writable = False
+    try:
+        space = os.statvfs(parent)
+        free_mib = (space.f_bavail * space.f_frsize) // (1024 * 1024)
+    except OSError:
+        free_mib = "?"
+    diagnostic = (
+        f"P1DBFAIL st={station_id[:8]} d={event_date} "
+        f"orig={_sample_db_failure_label(original_error)} "
+        f"write={_sample_db_failure_label(write_error)} "
+        f"db={_sample_db_path_label(out_path)} "
+        f"file={_sample_db_file_state(out_path)} "
+        f"dir={int(parent_exists)}/{int(bool(parent_writable))} "
+        f"freeMiB={free_mib} "
+        f"journal={_sample_db_file_state(Path(f'{out_path}-journal'))}"
+    )
+    # The hosted sweep retains only the last 300 characters.  Keep this
+    # one-line evidence compact enough to survive beside its fallback note.
+    return diagnostic[:220]
+
+
+def _record_station_day_failure(
+    *,
+    out: Any,
+    station_id: str,
+    event_date: str,
+    original_error: BaseException,
+    out_path: Path,
+) -> bool:
+    try:
+        out.execute(
+            "INSERT INTO metar_phase_hazard_exclusion VALUES(?,?,?,?,?)",
+            (station_id, event_date, "station_day_failed",
+             f"{type(original_error).__name__}: {original_error}"[:200], 1),
+        )
+    except sqlite3.Error as write_exc:
+        # Preserve both failures.  A failed station-day is normally recorded
+        # and skipped; if recording it also fails, the chained traceback alone
+        # is lost to the hosted lane's short status tail.
+        traceback.print_exception(write_exc, file=sys.stderr)
+        print(
+            _sample_db_write_failure_diagnostic(
+                station_id=station_id,
+                event_date=event_date,
+                original_error=original_error,
+                write_error=write_exc,
+                out_path=out_path,
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target-db", default=str(
@@ -815,11 +920,14 @@ def main() -> int:
                 regional_calibrate=args.regional_calibration == "on",
             )
         except Exception as exc:  # noqa: BLE001 - recorded, never silent
-            out.execute(
-                "INSERT INTO metar_phase_hazard_exclusion VALUES(?,?,?,?,?)",
-                (station_id, event_date, "station_day_failed",
-                 f"{type(exc).__name__}: {exc}"[:200], 1),
-            )
+            if not _record_station_day_failure(
+                out=out,
+                station_id=station_id,
+                event_date=event_date,
+                original_error=exc,
+                out_path=out_path,
+            ):
+                return 1
             continue
         counted: dict[tuple[str, str], int] = {}
         for reason, detail in exclusions:
