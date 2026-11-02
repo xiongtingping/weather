@@ -12199,9 +12199,17 @@ def collect_tail_short_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
-def collect_p0_ngr() -> dict[str, Any]:
-    """Charter 281: P0's regression fit, summarised for the P0 card (the artifact
-    the compile reads; no SSOT): parameters and the walk-forward verdict."""
+#: How far back the fleet's NGR serving state looks for each station-day's newest P0.
+P0_NGR_FLEET_HOURS = 3
+
+
+def collect_p0_ngr(fleet: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Charter 281: P0's regression fit, summarised for the P0 card and the model
+    area's three layers (user 2026-11-02 「前端所有单系统、融合层、分布层，都按照最新的
+    增加核心的内容」): parameters, the family weights and the deterministic
+    products' fleet bias it serves with, the walk-forward verdict, and
+    ``fleet`` (the kept section ``collect_p0_ngr_fleet``) -- whether the live
+    station-days are served by it."""
 
     from bayes_basket_target import p0_ngr as NGR  # noqa: PLC0415
 
@@ -12222,6 +12230,45 @@ def collect_p0_ngr() -> dict[str, Any]:
         "score_from_decision_utc": raw.get("score_from_decision_utc"), "mode": NGR.MODE,
         "walk_forward": {k: forward.get(k) for k in ("n", "n_days", "logscore", "crps", "brier",
                                                      "days_better", "by_band", "verdict")},
+        "families": list(NGR.FAMILIES), "det_products": list(NGR.DET_PRODUCTS),
+        "bias": raw.get("bias") or {}, "counts": raw.get("counts") or {},
+        "fleet": fleet,
+    }
+
+
+def collect_p0_ngr_fleet(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Each live station-day's newest P0 in the last few hours: served by the
+    regression or its fallback (and why), and how far F moved its centre."""
+
+    since = (_now() - timedelta(hours=P0_NGR_FLEET_HOURS)).strftime("%Y-%m-%dT%H:%M:%S")
+    receipt = "json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.{}')"
+    rows: dict[tuple[str, str], tuple] = {}
+    stations = [str(r[0]) for r in conn.execute(
+        "SELECT DISTINCT station_id FROM basket_probability_envelope"
+        " WHERE +stage='P0' AND state='COMMITTED' AND decision_at_utc>=?", (since,))]
+    for station in stations:
+        for row in conn.execute(
+            f"SELECT event_date, decision_at_utc, {receipt.format('state')}, {receipt.format('reason')},"
+            f" {receipt.format('centre_terms.f_pull_c')}, {receipt.format('centre_terms.f_weight')},"
+            f" {receipt.format('f_c')}, {receipt.format('mu_c')}, {receipt.format('sd_c')}"
+            " FROM basket_probability_envelope WHERE station_id=? AND stage='P0' AND state='COMMITTED'"
+            " AND decision_at_utc>=? ORDER BY decision_at_utc DESC", (station, since)):
+            rows.setdefault((station, str(row[0])), row[1:])
+    states: dict[str, int] = {}
+    pulls = []
+    for (_station, _day), (_at, state, reason, pull, _w, *_rest) in rows.items():
+        key = str(state or "NO_RECEIPT") + ("" if not reason else f":{reason}")
+        states[key] = states.get(key, 0) + 1
+        if state == "SERVED" and pull is not None:
+            pulls.append(abs(float(pull)))
+    return {
+        "hours": P0_NGR_FLEET_HOURS, "station_days": len(rows), "states": states,
+        "served": sum(n for k, n in states.items() if k == "SERVED"),
+        "f_pull_abs_median_c": statistics.median(pulls) if pulls else None,
+        "f_pull_abs_max_c": max(pulls) if pulls else None,
+        "rows": [{"station_id": st, "event_date": day, "decided_at_utc": v[0], "state": v[1], "reason": v[2],
+                  "f_pull_c": v[3], "f_weight": v[4], "f_c": v[5], "mu_c": v[6], "sd_c": v[7]}
+                 for (st, day), v in sorted(rows.items())],
     }
 
 
@@ -16013,7 +16060,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "fade_lanes": fade_lanes,
         "pair_maker_lane": pair_maker_lane,
         # Charter 279: one file read, for the P0 / P0-M cards' shadow comparison.
-        "p0_ngr": collect_p0_ngr(),
+        "p0_ngr": collect_p0_ngr(_cached_section("p0_ngr_fleet", collect_p0_ngr_fleet, conn)),
         "copy_follow_lane": copy_follow_lane,
         "basket_shadow": collect_basket_shadow(),
         "traded_calibration": collect_traded_calibration(),
@@ -21719,6 +21766,92 @@ function singleSystemWidth(){
       <tbody>${detail}</tbody></table></div></details>`;
 }
 
+// Charter 281's regression on the model area's three layers (user 2026-11-02
+// 「前端所有单系统、融合层、分布层，都按照最新的增加核心的内容」): what P0 serves now --
+// each family's weight and the deterministic F's share (融合层), the ten
+// deterministic products' fleet bias (单系统), the fit, its walk-forward and
+// whether the fleet is served by it (分布层).  Read from D.p0_ngr (the fit
+// artifact and each live station-day's newest receipt).
+const NGR_FAM_LABEL = {ECMWF: "IFS 集合", ECMWF_AIFS: "AIFS 集合", NOAA_GEFS: "GEFS", NOAA_AIGEFS: "AIGEFS",
+                       DWD_ICON_EPS: "ICON 集合", ECCC_GEM: "GEM 集合"};
+// pi_f = exp(beta_f), renormalised over the families seated (all six when none given).
+function ngrFamilyWeights(theta, seated){
+  const fams = Object.keys(NGR_FAM_LABEL).filter(f => !seated || seated.includes(f));
+  const raw = Object.fromEntries(fams.map(f => [f, Math.exp(Math.max(-8, Math.min(8, Number((theta || {})["beta_" + f]) || 0)))]));
+  const tot = Object.values(raw).reduce((a, b) => a + b, 0);
+  return Object.fromEntries(fams.map(f => [f, tot ? raw[f] / tot : null]));
+}
+// The share of the gap F - mu_E the centre takes at ``hours`` to settlement (L floored, p0_ngr.lead_covariate).
+function ngrFWeight(theta, hours){
+  const L = (Math.floor(hours) - 36) / 24;
+  return Number((theta || {}).w0) + Number((theta || {}).w1) * L;
+}
+const NGR_BAND = {lt12: "距结算 <12 h", near: "12–36 h", far: ">36 h"};
+function ngrWeightsSection(){
+  const G = D.p0_ngr || {};
+  if(!G.available) return "";
+  const T = G.theta || {}, W = ngrFamilyWeights(T);
+  const wmax = Math.max(...Object.values(W).map(v => v || 0), 0.01);
+  const famRows = Object.entries(W).sort((a, b) => b[1] - a[1]).map(([f, w]) => `<tr><td><b>${h(NGR_FAM_LABEL[f] || f)}</b> <span class="muted">${h(f)}</span></td>
+    <td style="min-width:180px"><div class="sd-wbar"><i style="width:${(100 * w / wmax).toFixed(1)}%"></i></div> <span class="mono">${(100 * w).toFixed(1)}%</span></td>
+    <td class="mono muted">β ${Number(T["beta_" + f]).toFixed(3)}</td></tr>`).join("");
+  const leads = [6, 12, 24, 36, 48, 72];
+  const fRow = leads.map(x => `<td class="mono">${(100 * ngrFWeight(T, x)).toFixed(1)}%</td>`).join("");
+  return `<h2>在服务的权重：分布回归的家族权重与确定性 F 的份量（宪章 281）</h2>
+  <p class="sub">P0 现在是一次分布回归：六家集合各自校准后的均值按下面的家族权重合成集合中心 μ<sub>E</sub>，
+    再把十家确定性预报的去偏中位数 F 与 μ<sub>E</sub> 之差按提前量取一份加进来。权重每天随拟合换代（拟合于 ${h(String(G.fitted_at_utc || "—").slice(0, 16).replace("T", " "))}Z）；
+    某站少一家时，在在场的几家里按同样的比例重新归一。下面「模型权重」「融合权重表」是旧链（站点对数分混合，宪章 199/242），现在只在分布回归未服务时用。</p>
+  <div class="grid g2"><div class="card"><div class="muted">集合家族权重 π<sub>f</sub> = e<sup>β</sup>，六家归一</div>
+    <table style="margin-top:6px;width:auto"><tbody>${famRows}</tbody></table></div>
+  <div class="card"><div class="muted">确定性 F 取 F − μ<sub>E</sub> 的份量（w0 + w1·L）</div>
+    <table style="margin-top:6px;width:auto"><thead><tr><th>距结算</th>${leads.map(x => `<th>${x} h</th>`).join("")}</tr></thead><tbody><tr><td>份量</td>${fRow}</tr></tbody></table>
+    <div class="muted" style="font-size:12px;margin-top:6px">F＝十家确定性逐家去偏后的中位数（见「单系统」的去偏表），至少 3 家；份量越大，确定性预报把 P0 中心拉得越多。</div></div></div>`;
+}
+function ngrDeterministicSection(){
+  const G = D.p0_ngr || {};
+  if(!G.available) return "";
+  const B = G.bias || {}, F = G.fleet || {};
+  const rows = (G.det_products || Object.keys(B)).map(p => `<tr><td><b>${h(SD_DET_LABEL[p] || p)}</b> <span class="muted">${h(p)}</span></td>
+    <td class="mono ${Number(B[p]) > 0 ? "up" : "down"}">${B[p] == null ? "—" : (B[p] > 0 ? "+" : "") + Number(B[p]).toFixed(2) + "°C"}</td></tr>`).join("");
+  return `<h2>确定性预报：十家进 P0 前各自去偏（宪章 281）</h2>
+  <p class="sub">十家确定性的当日最高温，各自加上全队偏差（正＝这家惯常报冷、往上抬）后取中位数得 F，取它们的离散度得分歧 Z；
+    F 拉动 P0 的中心，Z 进 P0 的宽度。偏差随分布回归每天拟合（${h(String(G.fitted_at_utc || "—").slice(0, 16).replace("T", " "))}Z，${h((G.window || []).join(" ~ "))}，${G.n_days ?? "—"} 天）。
+    ${F.station_days ? `最近 ${F.hours} 小时 ${F.station_days} 个站日里，F 把中心拉动的幅度中位 ${Number(F.f_pull_abs_median_c).toFixed(2)}°C、最大 ${Number(F.f_pull_abs_max_c).toFixed(2)}°C。` : ""}</p>
+  <table style="width:auto"><thead><tr><th>产品</th><th>全队偏差</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function ngrCoreSection(){
+  const G = D.p0_ngr || {};
+  if(!G.available) return `<h2>分布回归（宪章 281）</h2><p class="sub">拟合文件还没有。</p>`;
+  const T = G.theta || {}, fw = G.walk_forward || {}, ls = fw.logscore || {}, F = G.fleet || {};
+  const n3 = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(3);
+  const ci = c => c ? `[${n3(c[0])}, ${n3(c[1])}]` : "";
+  const states = Object.entries(F.states || {}).map(([k, n]) => `${h(k === "SERVED" ? "在服务" : k)} ${n}`).join(" · ");
+  const bands = Object.entries(fw.by_band || {}).map(([k, v]) => `<tr><td>${h(NGR_BAND[k] || k)}</td><td class="mono">${n3(v.delta_logscore)}</td><td class="mono">${v.n}</td></tr>`).join("");
+  return `<h2>分布回归（宪章 281）：P0 的中心与宽度怎么来</h2>
+  <p class="sub">自 2026-10-25 起，P0 不再是「合成 → 共识桥 → 辐射项 → 中心/宽度」逐层叠加，而是一次分布回归：
+    中心 μ = μ<sub>E</sub> + a + (w0 + w1·L)(F − μ<sub>E</sub>) + 辐射项；宽度 log σ = c0 + c1·L + c2·log S<sub>E</sub> + c3·Z；各桶概率按正态取。
+    μ<sub>E</sub>/S<sub>E</sub> 是各家集合校准后的加权均值与总离散度，F/Z 是十家确定性的去偏中位与分歧，L＝(距结算整小时 − 36)/24。
+    每天前推拟合，过 240 门才服务；没过、或某站输入不足时服务旧链向量（下面的「共识桥」「中心/宽度」现在只属于这条回退链）。</p>
+  <div class="sd-pnl-g" style="margin-top:8px">
+    <div class="sd-pnl-c ${fw.verdict === "PASS" ? "up" : "down"}"><span>前推判决</span><b>${h(fw.verdict || "—")}</b><i>${fw.n_days ?? "—"} 天里 ${fw.days_better ?? "—"} 天更准 · ${fw.n ?? "—"} 个决策</i></div>
+    <div class="sd-pnl-c"><span>LogScore（对旧链，负＝更准）</span><b>${n3(ls.delta)}</b><i>${ci(ls.ci)}</i></div>
+    <div class="sd-pnl-c"><span>CRPS / Brier</span><b>${n3((fw.crps || {}).delta)} / ${n3((fw.brier || {}).delta)}</b><i>${ci((fw.crps || {}).ci)}</i></div>
+    <div class="sd-pnl-c ${F.station_days && F.served < F.station_days ? "down" : "up"}"><span>全队在服务（最近 ${F.hours ?? "—"} h）</span><b>${F.served ?? "—"} / ${F.station_days ?? "—"}</b><i>${states || "—"}</i></div>
+  </div>
+  <div class="grid g2" style="margin-top:8px"><div class="card"><div class="muted">中心的参数</div>
+    <table style="margin-top:6px;width:auto"><tbody>
+      <tr><td>常数 a</td><td class="mono">${n3(T.a)}°C</td></tr>
+      <tr><td>F 份量 w0 / 随提前量 w1</td><td class="mono">${n3(T.w0)} / ${n3(T.w1)}</td></tr>
+      <tr><td>辐射 暖侧 / 冷侧（°C 每个标准分）</td><td class="mono">${n3(T.r_warm)} / ${n3(T.r_cold)}</td></tr></tbody></table></div>
+  <div class="card"><div class="muted">宽度的参数（log σ）</div>
+    <table style="margin-top:6px;width:auto"><tbody>
+      <tr><td>c0 常数</td><td class="mono">${n3(T.c0)}</td></tr>
+      <tr><td>c1 提前量</td><td class="mono">${n3(T.c1)}</td></tr>
+      <tr><td>c2 集合离散度 log S<sub>E</sub></td><td class="mono">${n3(T.c2)}</td></tr>
+      <tr><td>c3 确定性分歧 Z</td><td class="mono">${n3(T.c3)}</td></tr></tbody></table></div></div>
+  ${bands ? `<table style="margin-top:8px;width:auto"><thead><tr><th>分段</th><th>LogScore 差</th><th>决策数</th></tr></thead><tbody>${bands}</tbody></table>` : ""}
+  <div class="muted" style="font-size:12px;margin-top:6px">拟合于 ${h(String(G.fitted_at_utc || "—").slice(0, 16).replace("T", " "))}Z · 窗口 ${h((G.window || []).join(" ~ "))} · ${G.n_days ?? "—"} 天 ${G.n_records ?? "—"} 条 · 模式 ${h(G.mode || "—")} · 前推自 ${h(String(G.score_from_decision_utc || "").slice(0, 10))}</div>`;
+}
 function consensusBridgeSection(){
   const B = D.consensus_bridge || {};
   if(!B.available) return "";
@@ -23870,13 +24003,60 @@ function sdBucketTable(day, S){
       (day.market || {}).reference_state !== "complete" ? ` · <span class="down">市场向量不完整：${sdEsc((day.market || {}).reference_reason)}</span>` : ""} · 中价和 ${sdN((day.market || {}).mid_sum, 3)}</div>`;
 }
 
+// The ten deterministic products as P0's regression read them (user 2026-11-02
+// 「确定性模型是否进入了p0，也就是说模型 run 与权重是否需要增加确定性模型的内容」):
+// each one's run, its day maximum, the fleet bias the fit adds and the result,
+// its change against its run before and its next run (from the board's run list,
+// same rhythm rule as the ensembles'); F, Z and F's pull on the centre below.
+function sdNgrDetTable(day, G){
+  const det = G.deterministic || {}, runsOf = G.deterministic_runs || {}, B = (D.p0_ngr || {}).bias || {};
+  const names = Object.keys(det);
+  if(!names.length) return "";
+  const board = Object.fromEntries(((day.deterministic || {}).systems || []).map(r => [r.product, r]));
+  const rows = names.sort((a, b) => (det[b] ?? -99) - (det[a] ?? -99)).map(p => {
+    const v = det[p], b = B[p], R = ((board[p] || {}).runs || []).slice().sort((x, y) => String(x[2] || "").localeCompare(String(y[2] || "")));
+    const init = runsOf[p];
+    const at = R.findIndex(x => x[2] === init);
+    const prev = at > 0 ? R[at - 1] : null;
+    const steps = R.map((x, i) => i ? [x[2], x[1] - R[i - 1][1]] : null).filter(Boolean).reverse().slice(0, 4);
+    const inits = R.map(x => Date.parse(x[2])).filter(isFinite);
+    const gaps = inits.slice(1).map((t, i) => (t - inits[i]) / 3600e3).filter(g => g > 0);
+    const lags = R.map(x => (Date.parse(x[0]) - Date.parse(x[2])) / 3600e3).filter(g => isFinite(g) && g >= 0).sort((x, y) => x - y);
+    const cyc = gaps.length ? Math.min(...gaps) : null, lag = lags.length ? lags[Math.floor(lags.length / 2)] : null;
+    const nextInit = cyc && inits.length ? new Date(inits[inits.length - 1] + cyc * 3600e3) : null;
+    const due = nextInit && lag != null ? new Date(nextInit.getTime() + lag * 3600e3) : null;
+    const late = due ? (Date.now() - due.getTime()) / 3600e3 : null;
+    const one = (x, i) => `<span class="${Math.abs(x[1]) < 0.05 ? "flat" : x[1] > 0 ? "up" : "down"}">${i ? "" : "<b>"}${String(x[0]).slice(11, 13)}Z ${sdSg(x[1], 1)}${i ? "" : "</b>"}</span>`;
+    return `<tr><td><b>${sdEsc(SD_DET_LABEL[p] || p)}</b><div class="muted sd-sub">${sdEsc(p)}</div></td>
+      <td class="mono">${init ? String(init).slice(11, 13) + "Z" : "—"}<div class="muted sd-sub">${init ? sdLocal(init, true) : ""}</div></td>
+      <td class="mono">${sdN(v, 1)}°C${prev ? `<div class="muted sd-sub">上一轮 ${sdN(prev[1], 1)}</div>` : ""}</td>
+      <td class="mono ${b > 0 ? "up" : "down"}">${b == null ? "—" : sdSg(b, 2)}</td>
+      <td class="mono"><b>${v == null ? "—" : sdN(v + (b || 0), 2)}°C</b></td>
+      <td class="mono">${steps.length ? `<div>${one(steps[0], 0)}</div>${steps.length > 1 ? `<div class="sd-last5">${steps.slice(1).map((x, i) => one(x, i + 1)).join(" ")}</div>` : ""}` : "—"}</td>
+      <td class="mono">${nextInit ? `${nextInit.toISOString().slice(11, 13)}Z<div class="muted sd-sub">约 ${sdLocal(due.toISOString(), true)}${late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>` : "—"}</td></tr>`;
+  }).join("");
+  const ct = G.centre_terms || {};
+  return `<div class="sd-t" style="margin-top:10px">确定性预报 · 进 P0 的十家（宪章 281）</div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th>产品</th><th>run（起报，当地）</th><th>当日最高</th><th title="全队偏差，每日随分布回归拟合；正＝惯常报冷、往上抬">全队偏差</th><th>去偏后</th><th title="原值对这家上一轮的变化，新的在上">每轮增量</th><th title="按这家在本站的节奏推算">下一轮（当地）</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted sd-sub">F（去偏后中位）<b>${sdN(G.f_c, 2)}°C</b> · 分歧 Z ${sdN(G.z, 2)}（进宽度）· 集合中心 μ<sub>E</sub> ${sdN(ct.ensemble_c, 2)}°C · F 取差的 ${sdN(100 * (ct.f_weight || 0), 0)}% → 拉动 <b>${sdSg(ct.f_pull_c, 2)}°C</b> · 辐射 ${sdSg(ct.radiation_c, 2)}°C · 常数 ${sdSg(ct.constant_c, 2)}°C ＝ μ <b>${sdN(G.mu_c, 2)}°C</b>，σ ${sdN(G.sd_c, 2)}°C${G.state === "SERVED" ? "" : `（分布回归未服务：${sdEsc(G.reason || "—")}）`}</div>`;
+}
+
 // ---------------------------------------------------------------------------
 // Models: the P0 seat -- each system's run, arrival, weight and own shape.
 function sdModels(day){
   const p0 = (day.stages || {})["P0"];
   if(!p0) return "";
   const models = p0.models || [];
-  const wmax = Math.max(0.01, ...models.map(m => m.weight || 0));
+  // What P0 serves weighs the families by the regression's own pi_f (charter 281),
+  // renormalised over the seated ones; the old chain's weight only feeds the
+  // fallback (user 2026-11-02 「最新的p0，确定性模型是否进入了p0」).
+  const G = p0.ngr || {}, served = G.state === "SERVED";
+  const NW = ngrFamilyWeights((D.p0_ngr || {}).theta, Object.keys(G.family_moments || {}));
+  const famN = {};
+  models.forEach(m => { if(m.family in NW) famN[m.family] = (famN[m.family] || 0) + 1; });
+  const ngrW = m => m.family in NW && NW[m.family] != null ? NW[m.family] / famN[m.family] : null;
+  const shownW = m => served ? ngrW(m) : m.weight;
+  const wmax = Math.max(0.01, ...models.map(m => shownW(m) || 0));
   // Against the P0 just before (user 2026-10-05「run的更新变化、权重的变化、
   // 校准中心、均值等变化在表里标注」): a new run, and each number's move.
   const dv = (now, before, d, unit, scale) => {
@@ -23924,7 +24104,7 @@ function sdModels(day){
     const tip = `按本站日内节奏推：每 ${sdN(N.cycle_hours, 0)} 小时一轮，起报后约 ${sdN(N.lag_hours, 1)} 小时被 P0 用上`;
     return `<span title="${sdEsc(tip)}">${String(N.next_init_utc).slice(11, 13)}Z</span><div class="muted sd-sub">${N.next_due_utc ? `约 ${sdLocal(N.next_due_utc, true)}` : "—"}${late != null && late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>`;
   };
-  const rows = models.map(m => {
+  const rows = models.slice().sort((a, b) => (shownW(b) || 0) - (shownW(a) || 0)).map(m => {
     const st = m.stats || {}, pv = m.prev, raw = m.raw;
     const newRun = pv && pv.run_init_utc && m.run_init_utc && pv.run_init_utc !== m.run_init_utc;
     const tag = m.dropped ? ' <span class="pill red">本期掉座</span>'
@@ -23933,7 +24113,7 @@ function sdModels(day){
     return `<tr${m.dropped ? ' style="opacity:.6"' : ""}><td><b>${sdEsc(m.system_id)}</b>${tag}<div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
       <td class="mono">${sdEsc(m.run_cycle || "—")}${newRun ? ' <span class="pill">新 run</span>' : ""}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}${newRun ? `（上期 ${sdLocal(pv.run_init_utc, true)}）` : ""}</div></td>
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
-      <td title="${sdEsc(weightWhy)}"><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
+      <td title="${sdEsc(served ? `分布回归的家族权重（宪章 281，每日拟合），在入座家族里归一；旧链权重 ${sdPc(m.weight)} 只在回退时用。旧链：${weightWhy}` : weightWhy)}"><div class="sd-wbar"><i style="width:${(100 * (shownW(m) || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(shownW(m))}</span>${served ? "" : pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}${served ? `<div class="muted sd-sub">旧链 ${sdPc(m.weight)}${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}</div>` : ""}</td>
       <td class="mono"><b>${sdN(m.calibrated_centre_c, 2)}°C</b>${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
       <td class="mono">${runSteps(m.system_id)}</td>
       <td class="mono">${nextRun(m.system_id)}</td>
@@ -23945,11 +24125,12 @@ function sdModels(day){
   const changed = models.filter(m => m.dropped || !m.prev || (m.prev.run_init_utc !== m.run_init_utc)
     || Math.abs((m.weight || 0) - (m.prev.weight || 0)) >= 0.0005).length;
   const vsPrev = p0.previous_decided_at_utc
-    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}${changed ? `权重变化原因：${sdEsc(weightWhy)}。` : ""}</div>` : "";
+    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}${served ? "在服务的分布回归用它自己的家族权重（每日拟合才变）；" : ""}${changed ? `${served ? "旧链" : ""}权重变化原因：${sdEsc(weightWhy)}。` : ""}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
     ${vsPrev}
-    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th rowspan="2" title="按本站日内节奏推算的下一轮起报与被 P0 用上的当地时间">下一轮（当地）</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2" title="分布回归在服务时：它的家族权重（宪章 281）；下面小字是旧链（站点混合，宪章 199/242）的权重，只在回退时用">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th rowspan="2" title="按本站日内节奏推算的下一轮起报与被 P0 用上的当地时间">下一轮（当地）</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
       <tr><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${sdNgrDetTable(day, G)}
     <div class="muted sd-sub">P0 模型加权温度中心 ${sdN(p0.model_center_c, 2)}°C（各模型校准中心的加权值） · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
       Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>`;
 }
@@ -26350,15 +26531,15 @@ const GROUPS = [
      {box:"① 单系统：每家模型各自校准", nav:"单系统", kind:"live",
       note:`${famJia()}集合预报各自订正偏差、各自调宽度；命中率看订正有没有用`,
       sections:[[tablesCorrection,"单系统订正表"],[singleSystemWidth,"单系统宽度校准"],
-        [hitRate,"模型命中率"]]},
+        [ngrDeterministicSection,"确定性预报去偏"],[hitRate,"模型命中率"]]},
      {box:`② 融合层：${famJia()}怎么合成一条`, nav:"融合层", kind:"live",
-      note:"按权重合成；权重看在用的配比、重解是否对得上、宪章 199 的前向记账与候选，权重表是否按时换代，离散度看几家分歧多大",
+      note:"在服务的是分布回归的家族权重与确定性 F 的份量（宪章 281，每日拟合）；宪章 199 的站点混合权重与权重表现在只服务回退链；离散度看几家分歧多大",
       // 融合权重候选 joined the weights it is about (user 2026-10-10「融合权重：宪章 199
       // 在服务、前向记账与研究候选也是应该移动到模型权重板块去吧」); box ②′ is gone.
-      sections:[[servingWeights,"模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
+      sections:[[ngrWeightsSection,"在服务的权重"],[servingWeights,"模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", nav:"分布层", kind:"live",
-      note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布",
-      sections:[[consensusBridgeSection,"共识桥"],[centerWidth,"中心/宽度"],
+      note:"分布回归一次给出中心与宽度（宪章 281，在服务）；共识桥、辐射降温项、中心/宽度两标量是回退链；然后用样本外和真值检验服务出去的分布",
+      sections:[[ngrCoreSection,"分布回归"],[consensusBridgeSection,"共识桥"],[centerWidth,"中心/宽度"],
         [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
         // Out of the station-board area altogether (user 2026-10-21 「移出站点看板区」);
         // filled by the station board's read wherever it sits.

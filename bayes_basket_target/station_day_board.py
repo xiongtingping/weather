@@ -551,6 +551,8 @@ def _ngr_brief(L: Mapping[str, Any], axis) -> dict[str, Any] | None:
         "family_moments": receipt.get("family_moments") or {},
         "centre_terms": receipt.get("centre_terms") or None,
         "deterministic": {str(k): _float((v or {}).get("day_max_c")) for k, v in (receipt.get("deterministic") or {}).items()},
+        # Each product's run as the regression read it (user 2026-11-02 「确定性模型是否进入了p0」).
+        "deterministic_runs": {str(k): (v or {}).get("run_init_utc") for k, v in (receipt.get("deterministic") or {}).items()},
         "move": move,
     }
 

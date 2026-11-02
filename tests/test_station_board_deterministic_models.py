@@ -182,3 +182,25 @@ def test_weight_cause_names_the_daily_refit() -> None:
     assert cause["refit"] and cause["days_added"] == [1] and not cause["seat_changed"]
     assert cause["params_computed_at_utc"] == "2026-11-02T00:13:28Z"
     assert board._weight_cause(now, None) is None
+
+
+def test_ngr_weights_are_the_fits_family_weights_and_f_share() -> None:
+    """User 2026-11-02 「最新的p0，确定性模型是否进入了p0」: the board and the model
+    area show the weights P0 serves -- pi_f = exp(beta_f) renormalised over the
+    seated families -- and F's share w0 + w1 * L, L from the floored hours."""
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required")
+    start = DASHBOARD.index("const NGR_FAM_LABEL")
+    script = (DASHBOARD[start:DASHBOARD.index("const NGR_BAND")]
+              + "const T = {beta_ECMWF: 0, beta_ECMWF_AIFS: Math.log(3), beta_NOAA_GEFS: 0, beta_NOAA_AIGEFS: 0,"
+              " beta_DWD_ICON_EPS: 0, beta_ECCC_GEM: 0, w0: 0.25, w1: 0.1};\n"
+              + "console.log(JSON.stringify([ngrFamilyWeights(T), ngrFamilyWeights(T, ['ECMWF', 'ECMWF_AIFS']),"
+              " ngrFWeight(T, 36.9), ngrFWeight(T, 12)]));")
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    all_six, two, at36, at12 = json.loads(out.stdout)
+    assert all_six["ECMWF_AIFS"] == pytest.approx(3 / 8) and sum(all_six.values()) == pytest.approx(1)
+    assert two == pytest.approx({"ECMWF": 0.25, "ECMWF_AIFS": 0.75})
+    assert at36 == pytest.approx(0.25) and at12 == pytest.approx(0.25 - 0.1)
