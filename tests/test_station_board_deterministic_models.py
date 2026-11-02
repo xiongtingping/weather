@@ -74,7 +74,9 @@ def test_the_card_draws_f_and_one_chip_per_model() -> None:
         "systems": [
             {"product": "ICON_GLOBAL", "system_id": "X", "in_f": True, "relay": False, "tmax_c": 26.19,
              "run_init_utc": "2026-10-13T00:00:00Z", "knowable_at_utc": "2026-10-13T04:05:00Z",
-             "prev_run_init_utc": "2026-10-12T12:00:00Z", "prev_tmax_c": 25.05},
+             "prev_run_init_utc": "2026-10-12T12:00:00Z", "prev_tmax_c": 25.05,
+             "runs": [["2026-10-12T16:00:00Z", 25.05, "2026-10-12T12:00:00Z"],
+                      ["2026-10-13T04:05:00Z", 26.19, "2026-10-13T00:00:00Z"]]},
             {"product": "ARPEGE", "system_id": "Y", "in_f": False, "relay": False, "tmax_c": 28.09,
              "run_init_utc": "2026-10-13T00:00:00Z", "knowable_at_utc": "2026-10-13T04:28:00Z",
              "prev_run_init_utc": None, "prev_tmax_c": None}]}}
@@ -84,7 +86,8 @@ def test_the_card_draws_f_and_one_chip_per_model() -> None:
         'const sdEsc = s => String(s == null ? "" : s);\n'
         'const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);\n'
         'const sdSg = (v, d) => v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d == null ? 2 : d);\n'
-        + _function("sdLocal") + "\n"
+        + _function("sdLocal") + "\n" + "".join(_function(n) + "\n" for n in ("sdSpan", "sdAgeText", "sdAgeSpan", "sdMv", "sdRecentTable", "sdWhyRow"))
+        + "const SD_RECENT_OPEN = new Set();\n"
         + DASHBOARD[start:DASHBOARD.index("function sdDeterministic(")] + _function("sdDeterministic")
         + f"\nconsole.log(sdDeterministic({json.dumps(day, ensure_ascii=False)}).replace(/<[^>]+>/g, '|'));\n"
     )
@@ -94,6 +97,8 @@ def test_the_card_draws_f_and_one_chip_per_model() -> None:
     assert "F 27.54°C" in text and "比 P0 −0.01°C" in text and "中位 26.27°C" in text
     assert "ICON 全球" in text and "26.2" in text and "↑+1.1" in text and "进 F" in text
     assert "ARPEGE" in text and "28.1" in text and "首轮" in text and "只采集" in text
+    # The last arrivals, newest first (user 2026-11-02 「最近10次的变化」).
+    assert "最近 2 次" in text and "|原因：ICON 全球 00Z 到货|" in text and "|原因：ICON 全球 12Z 到货|" in text
     assert "${sdDeterministic(day)}" in DASHBOARD
 
 
@@ -111,3 +116,27 @@ def test_p0_change_cause_names_its_ngr_inputs() -> None:
         "确定性 CMA 10-31 18Z→11-01 12Z、GFS 12Z→18Z", "提前量 16→15 小时", "辐射分 -0.68→-0.48"]
     assert board._timeline_cause("P0", before, before) == ["同一批 run 重算"]
     assert board._timeline_cause("P0", head, head) == ["同一批 run 重算"]
+
+
+def test_recent_tables_show_ten_and_fold_the_older_five() -> None:
+    """User 2026-11-02 「最近10次的变化（隐藏前5次）」: ten rows at most, the five
+    older in a folded body whose open state survives a redraw."""
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the table")
+    script = (
+        "const sdEsc = s => String(s == null ? '' : s);\n" + _function("sdRecentTable") + "\n"
+        + "const SD_RECENT_OPEN = new Set();\n"
+        + "const rows = Array.from({length: 12}, (_, i) => `<tr><td>r${i}</td></tr>`);\n"
+        + "const a = sdRecentTable('d:P0', ['原因'], rows); SD_RECENT_OPEN.add('d:P0');\n"
+        + "console.log(JSON.stringify([a, sdRecentTable('d:P0', ['原因'], rows), sdRecentTable('d:P1', ['原因'], rows.slice(0, 3))]));\n"
+    )
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    folded, opened, short = json.loads(out.stdout)
+    assert "最近 10 次" in folded and "r9" in folded and "r10" not in folded
+    assert folded.index("r4") < folded.index('class="sd-recent-more"') < folded.index("r5")
+    assert "展开更早 5 次" in folded and 'class="sd-recent"' in folded
+    assert 'class="sd-recent open"' in opened and "收起" in opened
+    assert "最近 3 次" in short and "sd-recent-more" not in short

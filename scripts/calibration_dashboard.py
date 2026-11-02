@@ -16143,7 +16143,8 @@ color-scheme:dark}
 .sd-r4.pc-hit{background:var(--pill-green-bg);color:var(--pill-green-fg)}.sd-r4.pc-miss{background:var(--pill-amber-bg);color:var(--pill-amber-fg)}.sd-r4.pc-false{background:var(--pill-red-bg);color:var(--pill-red-fg)}
 .sd-prob-age{text-align:right;font-size:12px;margin-top:6px}
 .sd-recent{width:100%;margin-top:8px;border-collapse:collapse;font-size:12px}.sd-recent th{color:var(--muted);font-weight:500;text-align:left;padding:2px 4px;border-bottom:1px solid var(--line)}
-.sd-recent td{padding:2px 4px;white-space:nowrap}.sd-recent td b{color:var(--c)}.sd-recent tbody tr:first-child td{font-weight:700}
+.sd-recent td{padding:2px 4px;white-space:nowrap}.sd-recent td b{color:var(--c)}.sd-recent tbody:not(.sd-recent-more) tr:first-child td{font-weight:700}
+.sd-recent tbody.sd-recent-more{display:none}.sd-recent.open tbody.sd-recent-more{display:table-row-group}.sd-recent tfoot td{padding-top:3px}.sd-recent-tg{color:var(--muted);cursor:pointer;font-size:11.5px}.sd-recent tr.sd-why td{white-space:normal;color:var(--muted);font-weight:400;font-size:11px;padding:0 4px 3px;border-bottom:1px dashed var(--line)}
 /* METAR / TAF tables: a few words over the raw group, the change since the report before. */
 table.sd-rep td{vertical-align:top;white-space:nowrap}
 table.sd-rep td>div+div{margin-top:3px}
@@ -22910,24 +22911,46 @@ function sdCurveEvents(day, from){
     return moves.length ? [e.at, `${moves.join("；")}${e.causes.size ? "（" + [...e.causes].join("、") + "）" : ""}`, e.color] : null;
   }).filter(Boolean).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map((e, i) => [...e, i + 1]);
 }
-// The stage's last five committed versions inside its card (user 2026-10-16
-// 「三阶段卡片内部增加最近5次概率的变化」), newest first: mean and its move from
-// the version before, the mode bucket and its probability; the whole vector
-// in the row's tooltip.
+// The stage's last ten committed versions inside its card (user 2026-10-16
+// 「三阶段卡片内部增加最近5次概率的变化」, 2026-11-02 「改为最近10次的变化（隐藏前5次）」),
+// newest first: the mode bucket and its probability against the version before,
+// and what moved it (user 2026-11-02 「增加变化的原因列，去掉均值列」); the whole
+// vector in the row's tooltip.
+function sdMv(x, unit){
+  return x == null ? "" : Math.abs(x) < 0.005 ? `<span class="flat">＝</span>` :
+    `<span class="${x > 0 ? "up" : "down"}">${x > 0 ? "↑" : "↓"}${Math.abs(x).toFixed(2)}${unit}</span>`;
+}
+// The cards' recent-change tables: the newest ten, the older five folded under
+// a toggle whose state survives the board's redraws.  A row may carry its cause
+// as a second, full-width line (sdWhyRow) -- a column of its own is unreadable
+// in a narrow card.
+const SD_RECENT_OPEN = new Set();
+function sdRecentTable(key, heads, rows){
+  if(!rows.length) return "";
+  rows = rows.slice(0, 10);
+  const open = SD_RECENT_OPEN.has(key), more = rows.slice(5);
+  const k = sdEsc(JSON.stringify(key));
+  return `<table class="sd-recent${open ? " open" : ""}"><thead><tr><th>最近 ${rows.length} 次</th>${heads.map(x => `<th>${x}</th>`).join("")}</tr></thead>`
+    + `<tbody>${rows.slice(0, 5).join("")}</tbody>`
+    + (more.length ? `<tbody class="sd-recent-more">${more.join("")}</tbody><tfoot><tr><td colspan="${heads.length + 1}"><a class="sd-recent-tg" onclick="sdRecentToggle(this, ${k})">${open ? "收起" : `展开更早 ${more.length} 次`}</a></td></tr></tfoot>` : "")
+    + `</table>`;
+}
+function sdWhyRow(cols, text){ return `<tr class="sd-why"><td colspan="${cols}">${sdEsc(text || "—")}</td></tr>`; }
+function sdRecentToggle(a, key){
+  const t = a.closest("table"), open = t.classList.toggle("open");
+  if(open) SD_RECENT_OPEN.add(key); else SD_RECENT_OPEN.delete(key);
+  a.textContent = open ? "收起" : `展开更早 ${t.querySelectorAll("tbody.sd-recent-more tr:not(.sd-why)").length} 次`;
+}
 function sdRecentRuns(day, stage){
   const T = (day.timeline || []).filter(t => t.stage === stage);
-  if(!T.length) return "";
-  const rows = T.slice(-5).reverse().map(t => {
-    const i = T.indexOf(t), pv = i > 0 ? T[i - 1] : null, s = t.stats || {}, ps = (pv || {}).stats || {};
-    const dm = pv && s.mean_c != null && ps.mean_c != null ? s.mean_c - ps.mean_c : null;
+  const rows = T.slice(-10).reverse().map(t => {
+    const i = T.indexOf(t), pv = i > 0 ? T[i - 1] : null, s = t.stats || {};
     const dp = pv && s.mode && (pv.vector || {})[s.mode] != null ? 100 * (s.mode_p - pv.vector[s.mode]) : null;
-    const mv = (x, unit) => x == null ? "" : Math.abs(x) < 0.005 ? `<span class="flat">＝</span>` :
-      `<span class="${x > 0 ? "up" : "down"}">${x > 0 ? "↑" : "↓"}${Math.abs(x).toFixed(2)}${unit}</span>`;
     const tip = Object.entries(t.vector || {}).filter(([, v]) => v >= 0.005).map(([k, v]) => `${k} ${sdPc(v, 1)}`).join("\n");
-    return `<tr title="${sdEsc(sdLocal(t.at_utc, true) + (t.cause && t.cause.length ? " 原因：" + t.cause.join("、") : "") + " 概率向量\n" + tip)}"><td>${sdLocal(t.at_utc, true)}</td>`
-      + `<td>${sdN(s.mean_c, 2)}°C ${mv(dm, "")}</td><td>${sdEsc(s.mode || "—")} <b>${sdPc(s.mode_p, 1)}</b> ${mv(dp, "点")}</td></tr>`;
-  }).join("");
-  return `<table class="sd-recent"><thead><tr><th>最近 ${Math.min(5, T.length)} 次</th><th>均值</th><th>众数 · 概率</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<tr title="${sdEsc(sdLocal(t.at_utc, true) + " 概率向量\n" + tip)}"><td>${sdLocal(t.at_utc, true)}</td>`
+      + `<td>${sdEsc(s.mode || "—")} <b>${sdPc(s.mode_p, 1)}</b> ${sdMv(dp, "点")}</td></tr>` + sdWhyRow(2, "原因：" + ((t.cause || []).join("；") || "—"));
+  });
+  return sdRecentTable(`${day.event_date}:${stage}`, ["众数 · 概率"], rows);
 }
 
 function sdTemperature(value){ return value == null ? "—（未记录）" : `${sdN(value,2)}°C`; }
@@ -22957,7 +22980,7 @@ function sdD0Fresh(D){
   const age = (Date.now() - new Date(D.computed_at_utc).getTime()) / 1000;
   if(!isFinite(age)) return "";
   const cls = age > 1800 ? "red" : age > 900 ? "amber" : "green";
-  return `<span class="sd-fresh sd-fresh-${cls}" title="${sdEsc(`后台每 10 分钟算一次；本条算于 ${sdLocal(D.as_of_utc, true)}，依据报文 ${sdLocal(D.latest_report_utc, true)}`)}">${age > 1800 ? "停更 " : ""}${sdSpan(age)}前</span>`;
+  return `<span class="sd-fresh sd-fresh-${cls}" title="${sdEsc(`后台每 10 分钟算一次；本条算于 ${sdLocal(D.as_of_utc, true)}，依据报文 ${sdLocal(D.latest_report_utc, true)}`)}">${age > 1800 ? "停更 " : ""}${sdSpan(age)}</span>`;
 }
 // The estimate cards' trend: time across, temperature up (user 2026-10-18
 // 「两个曲线加时间」「横坐标：时间，纵坐标：温度」).  lines: [{pts: [[at, °C]],
@@ -23291,7 +23314,7 @@ function sdMemberBayes(day){
   }
   const bel = B.mean_c != null ? {stage: M.belief_stage || "信念", mean: B.mean_c} : sdBeliefOf(day);
   const mk = ((day.market || {}).stats || {}).mean_c;
-  return sdModelCard({title, tag: "只读 · 未验证", color: SD_COL.MB,
+  return sdModelCard({title, tag: "只读 · 未验证", color: SD_COL.MB, fresh: sdAgeSpan(M.as_of_utc, "sd-age sd-bare"),
     value: `${sdN(P.mean_c, 2)}°C`, valueTip: tip, mode: P.mode, modeP: P.mode_p,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? P.mean_c - bel.mean : null, "加权均值减当前服务信念均值"], ["比市场", mk == null ? null : P.mean_c - mk, "加权均值减市场均值"]],
     sub: [shift == null ? "" : `<span title="加权均值减成员等权均值">比先验 ${sdSg(shift, 2)}°C</span>`,
@@ -23469,7 +23492,8 @@ function sdWrf(day){
   const NS = W.nowcast_scores || {}, fs = NS.sat_obs_c, fc = NS.ctl_obs_c, O = W.oracle_score;
   const tip = `用卫星实测云的 WRF：GFS 前一天 18Z 驱动、9 km，当地约 11 点起跑；卫星云量与云厚（葵花）放进辐射，最新一张之后沿用；已与当时机场报文最高取大。`
     + `\n只读，不进任何层；前向测试满 15 个闭日后判定。`;
-  return sdModelCard({title, tag, color: SD_COL.WRF, dg: 1,
+  const wrfAt = issues.length ? issues[issues.length - 1].ready_utc : NC ? NC.ready_utc : null;
+  return sdModelCard({title, tag, color: SD_COL.WRF, dg: 1, fresh: wrfAt ? sdAgeSpan(wrfAt, "sd-age sd-bare") : "",
     value: `${sdN(lead, 1)}°C`, valueTip: tip,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? lead - bel.mean : null, "WRF 减当前服务信念均值"], ["比市场", mk == null ? null : lead - mk, "WRF 减市场均值"]],
     sub: NC ? `用卫星实测云（${satAt}）· 当地 ${loc(NC.ready_utc)} 出数${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`
@@ -23542,7 +23566,9 @@ function sdMos(day){
   const tip = `日前预报最高温 ${sdN(X.forecast_tmax_d1_c, 1)}°C ＋ 最新 ${hh2(X.hour)}:00 的 ΔT ${sdSg(X.total_c, 2)}°C（今天推算最高曾是 ${hh2(hi.hour)}:00 的 ${sdSg(hi.total_c, 2)}°C）。ΔT＝${String(X.hour).padStart(2, "0")}:00 前报文与卫星对日前预报的偏差（气温、露点、湿度、风、降水、日照，12 点起含已观测最高温）乘本站系数，再加站点偏差；`
     + `按站分层收缩拟合，0–23 点每小时一套系数；各档概率用 t 分布（自由度 ${X.t_df || "—"}）。`
     + `\n样本外：全天每个小时都显著好于只用站点偏差，9–17 点显著好于看板原日照线与湿度线；尚未与市场、P1 比较。只读，不进任何层。`;
-  return sdModelCard({title, tag, color: SD_COL.MOS,
+  // The estimate stands as of its hour's reports.
+  const mosAt = new Date(sdDayStartMs(day.event_date) + X.hour * 3600e3).toISOString();
+  return sdModelCard({title, tag, color: SD_COL.MOS, fresh: sdAgeSpan(mosAt, "sd-age sd-bare"),
     value: `${sdN(est, 2)}°C`, valueTip: tip, mode: top ? top.bucket : null, modeP: top ? top.p : null,
     modeLabel: "众数",
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? est - bel.mean : null, "MOS 推算减当前服务信念均值"], ["比市场", mk == null ? null : est - mk, "MOS 推算减市场均值"]],
@@ -23627,7 +23653,7 @@ function sdBestMatch(day){
     {pts: rows.filter(r => r.obs && r.obs.temp_c != null).map(r => [at(r.hour), r.obs.temp_c]), stroke: SD_COL.METAR, width: 1.5, label: "报文实况"}];
   const trend = `<div class="sd-d0-trend">${sdTimeTempChart(lines, null, null, {day: day.event_date, ...sdAxisOpts(day)})}</div>`;
   const rev = d1 == null ? null : now - d1;
-  return sdModelCard({title, tag, color,
+  return sdModelCard({title, tag, color, fresh: fetched ? sdAgeSpan(fetched, "sd-age sd-bare") : "",
     value: `${sdN(now, 1)}°C`, valueTip: "Open-Meteo best_match 最新一轮逐小时预报的当天最高（整点最大值）",
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? now - bel.mean : null, "best_match 最新减当前服务信念均值"], ["比市场", mk == null ? null : now - mk, "best_match 最新减市场均值"]],
     sub: `提前 1 天 ${sdN(d1, 1)}°C${rev == null ? "" : ` · 变化 ${sdSg(rev, 1)}`} · ${loc(fetched)} 拉取`,
@@ -23635,6 +23661,30 @@ function sdBestMatch(day){
     foot: "Open-Meteo 自动选模型（不注明来源模型）；每小时拉一次；提前 1 天那轮是 MOS 的基准；只读，不进任何层"});
 }
 
+// The deterministic card's last ten arrivals (user 2026-11-02 「"确定性预报"卡片也加上
+// 最近10次的变化（隐藏前5次）」), newest first: the arriving run's day maximum
+// against that model's run before, the F median (the systems in F) after it
+// against the median before, and which model's run it was, as the cause.
+function sdDetRecent(day, rows){
+  const events = rows.flatMap(r => (r.runs || []).map(([at, v, init]) => ({at, v, init, p: r.product, inF: r.in_f})))
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const last = {}, inF = {};
+  let median = null;
+  const out = events.map(e => {
+    const was = last[e.p];
+    last[e.p] = e.v;
+    if(e.inF) inF[e.p] = e.v;
+    const xs = Object.values(inF).sort((a, b) => a - b);
+    const m = xs.length < 2 ? null : xs.length % 2 ? xs[(xs.length - 1) / 2] : (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2;
+    const dm = m != null && median != null ? m - median : null;
+    median = m == null ? median : m;
+    return `<tr title="${sdEsc(`${e.p} ${String(e.init || "").slice(5, 16).replace("T", " ")}Z 起报，${sdLocal(e.at, true)}（当地）到货${e.inF ? "；进 F" : "；不进 F"}`)}"><td>${sdLocal(e.at, true)}</td>`
+      + `<td>${sdN(e.v, 1)}°C ${was == null ? '<span class="flat">首轮</span>' : sdMv(e.v - was, "")}</td>`
+      + `<td>${m == null ? "—" : `<b>${sdN(m, 2)}°C</b> ${sdMv(dm, "")}`}</td></tr>`
+      + sdWhyRow(3, `原因：${SD_DET_LABEL[e.p] || e.p} ${e.init ? String(e.init).slice(11, 13) + "Z " : ""}到货`);
+  });
+  return sdRecentTable(`${day.event_date}:DET`, ["最高温", "F 中位"], out.reverse());
+}
 function sdDeterministic(day, chain){
   const T = day.deterministic || {}, rows = T.systems || [], F = T.f;
   if(!rows.length && !F) return "";
@@ -23654,8 +23704,10 @@ function sdDeterministic(day, chain){
   // The median only, not each model (user 2026-10-18「确定性预报不要各个模型的曲线」).
   const chart = sdTimeTempChart([{pts: sdDetMedian(day), stroke: SD_COL.DET, width: 2, marks: sdDetMedian(day), label: "F 中位"}], null, null, {day: day.event_date, ...sdAxisOpts(day)});
   const trend = chart ? `<div class="sd-d0-trend">${chart}</div>` : "";
-  const body = `<div class="sd-det-grid">${chips}</div>`;
-  if(!F || F.f_c == null) return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, value: "F 暂无", trend, body});
+  const body = `<div class="sd-det-grid">${chips}</div>` + sdDetRecent(day, rows);
+  const newest = rows.map(r => r.knowable_at_utc).filter(Boolean).sort().pop();
+  const fresh = newest ? sdAgeSpan(newest, "sd-age sd-bare") : "";
+  if(!F || F.f_c == null) return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, fresh, value: "F 暂无", trend, body});
   const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
   const p0 = ((day.stages || {})["P0"] || {}).model_center_c;
   // In the chain the headline is what flows into P0: the regression's F (ten
@@ -23663,13 +23715,13 @@ function sdDeterministic(day, chain){
   // execution-layer number and reads as one line below it.
   const ngr = ((day.stages || {})["P0"] || {}).ngr || {};
   if(chain && ngr.f_c != null) {
-    return sdModelCard({title, tag: "P0 的输入", color: SD_COL.DET, trend,
+    return sdModelCard({title, tag: "P0 的输入", color: SD_COL.DET, fresh, trend,
       value: `F ${sdN(ngr.f_c, 2)}°C`, valueTip: `十家确定性逐家减全队偏差后的中位数，P0 分布回归的输入（宪章 281）`,
       cmp: [["比 P0", ngr.mu_c == null ? null : ngr.f_c - ngr.mu_c, "F 减 P0 回归中心 μ"], ["比市场", mk == null ? null : ngr.f_c - mk, "F 减市场均值"]],
       sub: `<span title="挂牌前 F（宪章 267）：执行层数字，不进 P0">挂牌前 F ${sdN(F.f_c, 2)}°C</span> · <span title="进挂牌前 F 的各家原始最高温中位">原始中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
       body, foot: "各家最新一轮的当日最高温；箭头＝比上一轮"});
   }
-  return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, trend,
+  return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, fresh, trend,
     value: `F ${sdN(F.f_c, 2)}°C`, valueTip: `挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdLocal(F.computed_at_utc, true)}`,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? F.f_c - bel.mean : null, "F 减当前服务信念均值"], ["比市场", mk == null ? null : F.f_c - mk, "F 减市场均值"]],
     sub: [`<span title="进 F 的 ${sdEsc(F.n_systems ?? "—")} 家原始最高温的中位">中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
@@ -24030,9 +24082,11 @@ function sdDirFresh(D){
     if(newest < expect) late.push(`${SD_DIR_COMPONENTS[k] || k} ${sdDirRun(new Date(expect).toISOString())}（起报后 ${h} 小时内应到）`);
     next.push(newest + cycle + h * 3600e3);
   }
-  if(late.length) return pill("amber", "迟到", "应到未到：" + late.join("、"));
-  if(!next.length) return pill("muted", "无可比轮次", "没有两轮可比的成员");
-  return pill("green", "最新", `各家都已是最新一轮；下一轮最晚约 ${sdLocal(new Date(Math.max(...next)).toISOString(), true)}（当地）到齐`);
+  // The snapshot's age in place of 最新 (user 2026-11-02 「改为和p0、p1一样的分钟时间」).
+  const ago = sdAgeSpan(D.computed_at_utc, "sd-age sd-bare");
+  if(late.length) return pill("amber", `迟到 · ${ago}`, "应到未到：" + late.join("、"));
+  if(!next.length) return pill("muted", ago, "没有两轮可比的成员");
+  return pill("green", ago, `各家都已是最新一轮；下一轮最晚约 ${sdLocal(new Date(Math.max(...next)).toISOString(), true)}（当地）到齐`);
 }
 function sdDirChange(last, prev){
   if(!last) return "";
@@ -24773,7 +24827,7 @@ function sdTafMetar(day){
   if(!met && !caps.length && !((SD.data || {}).taf_raw || []).length) return "";
   const main = `${M ? `<b class="sd-mc-v" style="font-size:24px">${M.temp_c == null ? "—" : sdN(M.temp_c, 0) + "°C"}</b><span class="sd-mc-mode">最新报文 <b>${sdEsc(M.local || "")}</b>${day.running_high_c != null ? ` · 已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : ""}</span>` : `<span class="muted">这一天还没有报文</span>`}`
     + (last ? `<span class="sd-mc-mode">TAF TX <b>${sdN(last.tx_c, 0)}°C</b>（${sdEsc(sdLocal(last.issued_at_utc, true))} 签发）</span>` : "");
-  return `<div class="sd-evidence-card sd-det-card sd-mc sd-wide" style="--c:${SD_COL.P0}"><div class="sd-mc-h"><span class="sd-mc-t">TAF · METAR</span><span class="sd-mc-tag">官方报文 · 结算口径</span></div>
+  return `<div class="sd-evidence-card sd-det-card sd-mc sd-wide" style="--c:${SD_COL.P0}"><div class="sd-mc-h"><span class="sd-mc-t">TAF · METAR</span><span class="sd-mc-tag">官方报文 · 结算口径</span>${M && M.valid_at_utc ? sdAgeSpan(M.valid_at_utc, "sd-age sd-bare") : ""}</div>
     <div class="sd-mc-main">${main}</div>
     ${sdTafRaw(SD.data || {}, taf)}
     ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary>${p1Line}<div class="sd-metar">${met}</div></details>` : p1Line}</div>`;

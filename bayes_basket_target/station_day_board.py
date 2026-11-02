@@ -2711,7 +2711,8 @@ def _deterministic(conn, station: str, day: str) -> dict[str, Any]:
             "prev_tmax_c": round(before[2], 2) if before else None,
             # Every run, on the clock it became known (user 2026-10-18
             # 「确定性预报：增加曲线，也是加横纵坐标」).
-            "runs": [[knowable, round(value, 2)] for _, knowable, value in held],
+            # The run's init third (user 2026-11-02 「确定性预报卡片也加上最近10次的变化」).
+            "runs": [[knowable, round(value, 2), init] for init, knowable, value in held],
         })
     systems.sort(key=lambda row: (not row["in_f"], order[row["product"]]))
     doc = _listing_f() or {}
