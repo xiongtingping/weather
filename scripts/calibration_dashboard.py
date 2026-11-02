@@ -16520,6 +16520,7 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-chain .sd-det b{flex:0 0 auto;white-space:nowrap;font-size:13px;font-weight:600;margin:0;color:var(--text)}
 .sd-chain .sd-det-f span:first-child{flex:0 0 2.8em;text-align:right;font-size:10.5px;white-space:nowrap}
 .sd-chain .sd-det-f span:last-child{display:none}
+.sd-chain .sd-det.sd-det-set .sd-det-h span:first-child{color:var(--c);font-weight:700}.sd-chain .sd-det.sd-det-set b{color:var(--c)}
 .sd-four .sd-det-pick{font-size:11px}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
@@ -23765,9 +23766,22 @@ function sdDetPick(P){
   return `<b class="sd-det-pick${P.offset ? " moved" : ""}" title="${sdEsc(tip)}">选桶 ${name} · ${sdEsc(P.bucket)} <span class="sd-sub">未验证</span></b>`;
 }
 // The F systems' newest runs so far, their median on the clock each run arrived.
-function sdDetMedian(day){
-  const rows = ((day.deterministic || {}).systems || []).filter(r => r.in_f && (r.runs || []).length);
-  const events = rows.flatMap(r => r.runs.map(([at, v]) => [at, r.product, v])).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+// Which products a card's F reads and the shift each gets (user 2026-11-02 「这里不是10家」):
+// in the production chain P0's regression -- its ten products, each plus its fleet
+// bias, median equally weighted (charter 281); elsewhere charter 267's listing-time
+// F systems, raw.
+function sdDetBasis(day, chain){
+  const ngr = ((day.stages || {})["P0"] || {}).ngr || {}, G = (typeof D !== "undefined" && D.p0_ngr) || {};
+  if(chain && ngr.f_c != null) {
+    const list = G.det_products || Object.keys(ngr.deterministic || {});
+    return {ngr: true, member: r => list.includes(r.product), bias: G.bias || {}, label: "F（十家去偏中位）"};
+  }
+  return {ngr: false, member: r => !!r.in_f, bias: {}, label: "F 中位"};
+}
+function sdDetMedian(day, basis){
+  basis = basis || {ngr: false, member: r => !!r.in_f, bias: {}, label: "F 中位"};
+  const rows = ((day.deterministic || {}).systems || []).filter(r => basis.member(r) && (r.runs || []).length);
+  const events = rows.flatMap(r => r.runs.map(([at, v]) => [at, r.product, v + (basis.bias[r.product] || 0)])).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   const latest = {}, out = [];
   events.forEach(([at, p, v]) => {
     const was = latest[p];
@@ -23836,15 +23850,16 @@ function sdBestMatch(day){
 // 最近10次的变化（隐藏前5次）」), newest first: the arriving run's day maximum
 // against that model's run before, the F median (the systems in F) after it
 // against the median before, and which model's run it was, as the cause.
-function sdDetRecent(day, rows){
-  const events = rows.flatMap(r => (r.runs || []).map(([at, v, init]) => ({at, v, init, p: r.product, inF: r.in_f})))
+function sdDetRecent(day, rows, basis){
+  basis = basis || {ngr: false, member: r => !!r.in_f, bias: {}, label: "F 中位"};
+  const events = rows.flatMap(r => (r.runs || []).map(([at, v, init]) => ({at, v, init, p: r.product, inF: basis.member(r)})))
     .sort((a, b) => String(a.at).localeCompare(String(b.at)));
   const last = {}, inF = {};
   let median = null;
   const out = events.map(e => {
     const was = last[e.p];
     last[e.p] = e.v;
-    if(e.inF) inF[e.p] = e.v;
+    if(e.inF) inF[e.p] = e.v + (basis.bias[e.p] || 0);
     const xs = Object.values(inF).sort((a, b) => a - b);
     const m = xs.length < 2 ? null : xs.length % 2 ? xs[(xs.length - 1) / 2] : (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2;
     const dm = m != null && median != null ? m - median : null;
@@ -23854,28 +23869,50 @@ function sdDetRecent(day, rows){
       + `<td>${m == null ? "—" : `<b>${sdN(m, 2)}°C</b> ${sdMv(dm, "")}`}</td></tr>`
       + sdWhyRow(3, `原因：${SD_DET_LABEL[e.p] || e.p} ${e.init ? String(e.init).slice(11, 13) + "Z " : ""}到货`);
   });
-  return sdRecentTable(`${day.event_date}:DET`, ["最高温", "F 中位"], out.reverse());
+  return sdRecentTable(`${day.event_date}:DET`, ["最高温", basis.ngr ? "F（去偏中位）" : "F 中位"], out.reverse());
 }
 function sdDeterministic(day, chain){
-  const T = day.deterministic || {}, rows = T.systems || [], F = T.f;
+  const T = day.deterministic || {}, F = T.f;
+  const basis = sdDetBasis(day, chain), ngr = ((day.stages || {})["P0"] || {}).ngr || {};
+  // In the chain, only the products P0 reads, at the run and value its receipt read.
+  const rows = basis.ngr
+    ? (T.systems || []).filter(basis.member).map(r => {
+        const used = (ngr.deterministic_runs || {})[r.product], v = (ngr.deterministic || {})[r.product];
+        if(!used || v == null || used === r.run_init_utc) return r;
+        const R = (r.runs || []).filter(x => x[2] && x[2] < used).sort((a, b) => String(a[2]).localeCompare(String(b[2])));
+        return {...r, run_init_utc: used, tmax_c: v, prev_run_init_utc: R.length ? R[R.length - 1][2] : null, prev_tmax_c: R.length ? R[R.length - 1][1] : null};
+      })
+    : (T.systems || []);
   if(!rows.length && !F) return "";
   const run = t => t ? String(t).slice(11, 13) + "Z" : "—";
+  // The one or two products at the middle set F (median of the debiased values).
+  const setters = new Set();
+  if(basis.ngr) {
+    const xs = rows.filter(r => r.tmax_c != null).map(r => [r.product, r.tmax_c + (basis.bias[r.product] || 0)]).sort((a, b) => a[1] - b[1]);
+    if(xs.length) (xs.length % 2 ? [xs[(xs.length - 1) / 2]] : [xs[xs.length / 2 - 1], xs[xs.length / 2]]).forEach(x => setters.add(x[0]));
+  }
   const chips = rows.map(r => {
     const d = r.prev_tmax_c == null ? null : r.tmax_c - r.prev_tmax_c;
-    const tag = r.in_f ? "进 F" : r.relay ? "转发" : "只采集";
+    const tag = basis.ngr ? (setters.has(r.product) ? "定 F" : "进 P0") : r.in_f ? "进 F" : r.relay ? "转发" : "只采集";
+    const b = basis.bias[r.product];
     const tip = `${r.system_id}\n起报 ${String(r.run_init_utc).slice(5, 16).replace("T", " ")}Z，到货 ${sdLocal(r.knowable_at_utc, true)}（当地）`
       + (r.prev_run_init_utc ? `\n上一轮 ${run(r.prev_run_init_utc)}：${sdN(r.prev_tmax_c, 2)}°C` : "")
-      + (r.in_f ? "\n挂牌前 F 读这一家" : r.relay ? "\n经 Open-Meteo 转发，不进 F" : "\n采集了，不进 F");
-    return `<div class="sd-det${r.in_f ? "" : " sd-det-off"}" title="${sdEsc(tip)}"><div class="sd-det-h"><span>${sdEsc(SD_DET_LABEL[r.product] || r.product)}</span><span>${run(r.run_init_utc)}</span></div>`
+      + (basis.ngr ? `\n全队偏差 ${sdSg(b, 2)}°C → 去偏后 ${sdN(r.tmax_c + (b || 0), 2)}°C${setters.has(r.product) ? "；排在中间，此刻定 F" : ""}`
+        : r.in_f ? "\n挂牌前 F 读这一家" : r.relay ? "\n经 Open-Meteo 转发，不进 F" : "\n采集了，不进 F");
+    return `<div class="sd-det${basis.ngr ? (setters.has(r.product) ? " sd-det-set" : "") : r.in_f ? "" : " sd-det-off"}" title="${sdEsc(tip)}"><div class="sd-det-h"><span>${sdEsc(SD_DET_LABEL[r.product] || r.product)}</span><span>${run(r.run_init_utc)}</span></div>`
       + `<b>${sdN(r.tmax_c, 1)}</b><div class="sd-det-f"><span class="${d == null ? "flat" : d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}">${d == null ? "首轮" : (d > 0 ? "↑" : d < 0 ? "↓" : "") + sdSg(d, 1)}</span><span>${tag}</span></div></div>`;
   }).join("");
   const title = "确定性预报";
   // Every run on the clock it arrived: each F system thin, and the median of
   // their newest runs so far bold (user 2026-10-18「确定性预报：增加曲线，也是加横纵坐标」).
   // The median only, not each model (user 2026-10-18「确定性预报不要各个模型的曲线」).
-  const chart = sdTimeTempChart([{pts: sdDetMedian(day), stroke: SD_COL.DET, width: 2, marks: sdDetMedian(day), label: "F 中位"}], null, null, {day: day.event_date, ...sdAxisOpts(day)});
+  const med = sdDetMedian(day, basis);
+  const chart = sdTimeTempChart([{pts: med, stroke: SD_COL.DET, width: 2, marks: med, label: basis.label}], null, null, {day: day.event_date, ...sdAxisOpts(day)});
   const trend = chart ? `<div class="sd-d0-trend">${chart}</div>` : "";
-  const body = `<div class="sd-det-grid">${chips}</div>`, body2 = sdDetRecent(day, rows);
+  const others = basis.ngr ? (T.systems || []).filter(r => !basis.member(r)).map(r => SD_DET_LABEL[r.product] || r.product) : [];
+  const body = `<div class="sd-det-grid">${chips}</div>`
+    + (others.length ? `<div class="muted sd-sub" style="margin-top:4px">另 ${others.length} 家只采集、不进 P0：${sdEsc(others.join("、"))}</div>` : "");
+  const body2 = sdDetRecent(day, basis.ngr ? (T.systems || []).filter(basis.member) : rows, basis);
   const newest = rows.map(r => r.knowable_at_utc).filter(Boolean).sort().pop();
   const fresh = newest ? sdAgeSpan(newest, "sd-age sd-bare") : "";
   if(!F || F.f_c == null) return (chain ? sdChainCard : sdModelCard)({title, tag: "宪章 267", color: SD_COL.DET, fresh, value: "F 暂无", trend, body, body2});
@@ -23884,13 +23921,12 @@ function sdDeterministic(day, chain){
   // In the chain the headline is what flows into P0: the regression's F (ten
   // products, each debiased); the listing-time F of charter 267 is an
   // execution-layer number and reads as one line below it.
-  const ngr = ((day.stages || {})["P0"] || {}).ngr || {};
   if(chain && ngr.f_c != null) {
     return sdChainCard({title, tag: "P0 的输入", color: SD_COL.DET, fresh, trend, body2,
-      value: `F ${sdN(ngr.f_c, 2)}°C`, valueTip: `十家确定性逐家减全队偏差后的中位数，P0 分布回归的输入（宪章 281）`,
+      value: `F ${sdN(ngr.f_c, 2)}°C`, valueTip: `十家确定性各加全队偏差后的中位数（十家等权，不是平均），P0 分布回归的输入（宪章 281）`,
       cmp: [["比 P0", ngr.mu_c == null ? null : ngr.f_c - ngr.mu_c, "F 减 P0 回归中心 μ"], ["比市场", mk == null ? null : ngr.f_c - mk, "F 减市场均值"]],
-      sub: `<span title="挂牌前 F（宪章 267）：执行层数字，不进 P0">挂牌前 F ${sdN(F.f_c, 2)}°C</span> · <span title="进挂牌前 F 的各家原始最高温中位">原始中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
-      body, foot: "各家最新一轮的当日最高温；箭头＝比上一轮"});
+      sub: `<span title="十家各加全队偏差后取中位数，每家一票">${rows.length} 家去偏中位 · 定 F：${sdEsc([...setters].map(p => SD_DET_LABEL[p] || p).join("、") || "—")}</span> · <span title="挂牌前 F（宪章 267）：执行层数字，不进 P0">挂牌前 F ${sdN(F.f_c, 2)}°C</span>`,
+      body, foot: "P0 这一期读到的各家当日最高温（原值）；箭头＝比该家上一轮；描边＝排在中间、此刻定 F"});
   }
   return (chain ? sdChainCard : sdModelCard)({title, tag: "宪章 267", color: SD_COL.DET, fresh, trend, body2,
     value: `F ${sdN(F.f_c, 2)}°C`, valueTip: `挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdLocal(F.computed_at_utc, true)}`,
