@@ -95,3 +95,19 @@ def test_the_card_draws_f_and_one_chip_per_model() -> None:
     assert "ICON 全球" in text and "26.2" in text and "↑+1.1" in text and "进 F" in text
     assert "ARPEGE" in text and "28.1" in text and "首轮" in text and "只采集" in text
     assert "${sdDeterministic(day)}" in DASHBOARD
+
+
+def test_p0_change_cause_names_its_ngr_inputs() -> None:
+    """User 2026-11-02 「模型没有run更新，为什么p0变化了呢」「加上」: charter 281's
+    P0 also moves on a deterministic run, the lead hour and the radiation score;
+    the cause names them instead of 「同一批 run 重算」."""
+
+    runs = json.dumps({"NOAA_GEFS_05": "2026-11-01T18:00:00Z"})
+    det = lambda **kw: json.dumps({k: {"day_max_c": 20.0, "run_init_utc": v} for k, v in kw.items()})  # noqa: E731
+    head = (runs, None, None, None, "root-1")
+    before = head + (det(GFS="2026-11-01T12:00:00Z", CMA="2026-10-31T18:00:00Z"), -0.8333, -0.68)
+    now = head + (det(GFS="2026-11-01T18:00:00Z", CMA="2026-11-01T12:00:00Z"), -0.875, -0.48)
+    assert board._timeline_cause("P0", now, before) == [
+        "确定性 CMA 10-31 18Z→11-01 12Z、GFS 12Z→18Z", "提前量 16→15 小时", "辐射分 -0.68→-0.48"]
+    assert board._timeline_cause("P0", before, before) == ["同一批 run 重算"]
+    assert board._timeline_cause("P0", head, head) == ["同一批 run 重算"]

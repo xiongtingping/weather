@@ -667,7 +667,11 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
         " json_extract(lineage_json,'$.taf_observed_tx_c'),"
         " json_extract(lineage_json,'$.reported_high_c'),"
         " coalesce(json_extract(lineage_json,'$.prediction_root_checkpoint_id'),"
-        "          json_extract(lineage_json,'$.p0_root_checkpoint_id'))"
+        "          json_extract(lineage_json,'$.p0_root_checkpoint_id')),"
+        # P0's NGR inputs besides the ensemble runs (charter 281's receipt, stored as text).
+        " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.deterministic'),"
+        " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.L'),"
+        " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.radiation_standardised')"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
         " AND state='COMMITTED' AND stage IN ('P0','P1') ORDER BY decision_at_utc",
         (station, day),
@@ -724,6 +728,8 @@ def _timeline_cause(stage: str, why: Sequence[Any], prev: tuple | None) -> list[
             out.append(f"{name} {str(b)[11:13]}Z 入座")
         else:
             out.append(f"{name} {str(a)[11:13]}Z→{str(b)[11:13]}Z")
+    if stage == "P0":
+        out += _ngr_cause(why[5:], prev[5:])
     if stage == "P1" and why[3] != prev[3] and why[3] is not None:
         out.append(f"已报最高 {prev[3] if prev[3] is not None else '—'}→{why[3]}°C")
     if stage != "P0" and why[4] != prev[4] and not out:
@@ -732,6 +738,39 @@ def _timeline_cause(stage: str, why: Sequence[Any], prev: tuple | None) -> list[
         out.append("新报文")
     if stage == "P0" and not out:
         out.append("同一批 run 重算")
+    return out
+
+
+def _ngr_cause(now: Sequence[Any], before: Sequence[Any]) -> list[str]:
+    """P0's other NGR inputs (charter 281): the ten deterministic forecasts'
+    runs, the lead hour and the radiation score (user 2026-11-02 「模型没有run
+    更新，为什么p0变化了呢」 -- the ensemble runs alone left these moves unnamed)."""
+
+    if len(now) < 3 or len(before) < 3:
+        return []
+    out = []
+    det_now, det_before = _json(now[0], {}) or {}, _json(before[0], {}) or {}
+    moved = []
+    for product in sorted(set(det_now) | set(det_before)):
+        a = (det_before.get(product) or {}).get("run_init_utc")
+        b = (det_now.get(product) or {}).get("run_init_utc")
+        if a == b:
+            continue
+        run = lambda t, other: f"{str(t)[5:10]} {str(t)[11:13]}Z" if str(t)[:10] != str(other)[:10] else f"{str(t)[11:13]}Z"  # noqa: E731
+        if b is None:
+            moved.append(f"{product} 退出")
+        elif a is None:
+            moved.append(f"{product} {run(b, b)} 入座")
+        else:
+            moved.append(f"{product} {run(a, b)}→{run(b, a)}")
+    if moved:
+        out.append("确定性 " + "、".join(moved))
+    L0, L1 = _float(before[1]), _float(now[1])
+    if L0 is not None and L1 is not None and L0 != L1:
+        out.append(f"提前量 {round(36 + 24 * L0)}→{round(36 + 24 * L1)} 小时")
+    r0, r1 = _float(before[2]), _float(now[2])
+    if r0 is not None and r1 is not None and abs(r1 - r0) >= 0.005:
+        out.append(f"辐射分 {r0:+.2f}→{r1:+.2f}")
     return out
 
 
