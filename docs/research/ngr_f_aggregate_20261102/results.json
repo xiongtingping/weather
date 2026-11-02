@@ -1,0 +1,269 @@
+{
+ "window": [
+  "2026-09-03",
+  "2026-11-01"
+ ],
+ "counts": {
+  "stations": 49,
+  "station_days": 2730,
+  "picked": 8122,
+  "no_systems": 2643,
+  "no_winner": 0
+ },
+ "n_records": 5479,
+ "score_from_decision_utc": "2026-10-01T00:00:00Z",
+ "vs_fallback": {
+  "MED": {
+   "n": 4196,
+   "n_days": 32,
+   "logscore": {
+    "delta": -0.033,
+    "ci": [
+     -0.04666,
+     -0.01964
+    ]
+   },
+   "days_better": 25,
+   "crps": {
+    "delta": -0.01561,
+    "ci": [
+     -0.02391,
+     -0.00702
+    ]
+   },
+   "brier": {
+    "delta": -0.00823,
+    "ci": [
+     -0.01294,
+     -0.00337
+    ]
+   },
+   "by_band": {
+    "far": {
+     "n": 1335,
+     "delta_logscore": -0.06608
+    },
+    "lt12": {
+     "n": 1446,
+     "delta_logscore": -0.02078
+    },
+    "near": {
+     "n": 1415,
+     "delta_logscore": -0.01426
+    }
+   },
+   "verdict": "PASS",
+   "reverse_significant": false
+  },
+  "MEAN": {
+   "n": 4196,
+   "n_days": 32,
+   "logscore": {
+    "delta": -0.03351,
+    "ci": [
+     -0.04669,
+     -0.02033
+    ]
+   },
+   "days_better": 25,
+   "crps": {
+    "delta": -0.01557,
+    "ci": [
+     -0.0238,
+     -0.00726
+    ]
+   },
+   "brier": {
+    "delta": -0.00863,
+    "ci": [
+     -0.01329,
+     -0.00391
+    ]
+   },
+   "by_band": {
+    "far": {
+     "n": 1335,
+     "delta_logscore": -0.06643
+    },
+    "lt12": {
+     "n": 1446,
+     "delta_logscore": -0.02108
+    },
+    "near": {
+     "n": 1415,
+     "delta_logscore": -0.01515
+    }
+   },
+   "verdict": "PASS",
+   "reverse_significant": false
+  },
+  "TRIM1": {
+   "n": 4196,
+   "n_days": 32,
+   "logscore": {
+    "delta": -0.03336,
+    "ci": [
+     -0.04678,
+     -0.01986
+    ]
+   },
+   "days_better": 25,
+   "crps": {
+    "delta": -0.01563,
+    "ci": [
+     -0.02391,
+     -0.00717
+    ]
+   },
+   "brier": {
+    "delta": -0.00841,
+    "ci": [
+     -0.01308,
+     -0.00361
+    ]
+   },
+   "by_band": {
+    "far": {
+     "n": 1335,
+     "delta_logscore": -0.06613
+    },
+    "lt12": {
+     "n": 1446,
+     "delta_logscore": -0.02066
+    },
+    "near": {
+     "n": 1415,
+     "delta_logscore": -0.01543
+    }
+   },
+   "verdict": "PASS",
+   "reverse_significant": false
+  }
+ },
+ "MEAN_minus_MED": {
+  "n": 4196,
+  "n_days": 32,
+  "logscore": {
+   "delta": -0.00052,
+   "ci": [
+    -0.00235,
+    0.00128
+   ]
+  },
+  "days_better": 17,
+  "crps": {
+   "delta": 5e-05,
+   "ci": [
+    -0.00093,
+    0.00106
+   ]
+  },
+  "brier": {
+   "delta": -0.0004,
+   "ci": [
+    -0.00094,
+    0.00016
+   ]
+  },
+  "by_band": {
+   "far": {
+    "n": 1335,
+    "delta_logscore": -0.00035
+   },
+   "lt12": {
+    "n": 1446,
+    "delta_logscore": -0.0003
+   },
+   "near": {
+    "n": 1415,
+    "delta_logscore": -0.00089
+   }
+  },
+  "verdict": "REFUSED",
+  "reverse_significant": false
+ },
+ "TRIM1_minus_MED": {
+  "n": 4196,
+  "n_days": 32,
+  "logscore": {
+   "delta": -0.00037,
+   "ci": [
+    -0.0016,
+    0.00089
+   ]
+  },
+  "days_better": 20,
+  "crps": {
+   "delta": -2e-05,
+   "ci": [
+    -0.00081,
+    0.00085
+   ]
+  },
+  "brier": {
+   "delta": -0.00018,
+   "ci": [
+    -0.00061,
+    0.00025
+   ]
+  },
+  "by_band": {
+   "far": {
+    "n": 1335,
+    "delta_logscore": -5e-05
+   },
+   "lt12": {
+    "n": 1446,
+    "delta_logscore": 0.00012
+   },
+   "near": {
+    "n": 1415,
+    "delta_logscore": -0.00117
+   }
+  },
+  "verdict": "REFUSED",
+  "reverse_significant": false
+ },
+ "MEAN_minus_TRIM1": {
+  "n": 4196,
+  "n_days": 32,
+  "logscore": {
+   "delta": -0.00015,
+   "ci": [
+    -0.00135,
+    0.00093
+   ]
+  },
+  "days_better": 16,
+  "crps": {
+   "delta": 7e-05,
+   "ci": [
+    -0.00053,
+    0.00064
+   ]
+  },
+  "brier": {
+   "delta": -0.00022,
+   "ci": [
+    -0.00045,
+    2e-05
+   ]
+  },
+  "by_band": {
+   "far": {
+    "n": 1335,
+    "delta_logscore": -0.0003
+   },
+   "lt12": {
+    "n": 1446,
+    "delta_logscore": -0.00042
+   },
+   "near": {
+    "n": 1415,
+    "delta_logscore": 0.00027
+   }
+  },
+  "verdict": "REFUSED",
+  "reverse_significant": false
+ }
+}
