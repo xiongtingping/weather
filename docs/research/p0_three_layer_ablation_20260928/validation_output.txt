@@ -1,0 +1,68 @@
+{
+  "scored_pairs": 2580,
+  "source_probability_vectors": 990,
+  "independent_score_max_error": 4.440892098500626e-16,
+  "all_row_roundtrip_checks": 215,
+  "outcome_label_invariance_checks": 215,
+  "zero_bridge_rows": 110,
+  "seat_identity_rows": 168,
+  "C_F_open_bucket_boundary_checks": 84,
+  "leave_one_station_out_ranges": {
+    "seat_b1_w1": {
+      "brier": [
+        -0.00023887829843163554,
+        0.00025579414912112674
+      ],
+      "logloss": [
+        -0.0005435741339663143,
+        0.000450846982708089
+      ]
+    },
+    "equal_b1_w1": {
+      "brier": [
+        0.004015985721623002,
+        0.006059424665994765
+      ],
+      "logloss": [
+        0.006087747567254559,
+        0.010147571518641681
+      ]
+    },
+    "served_b0_w1": {
+      "brier": [
+        -0.0005314225136785742,
+        0.0011445771242407415
+      ],
+      "logloss": [
+        0.0027858577333002683,
+        0.0060142798118651385
+      ]
+    },
+    "served_b1_w0": {
+      "brier": [
+        0.004750167877237761,
+        0.00867813351811265
+      ],
+      "logloss": [
+        0.04197606145837761,
+        0.05378236871603981
+      ]
+    }
+  },
+  "proper_first_p0_coverage": {
+    "valid_prior_first_p0_refs": 207,
+    "single_system_vectors_present": 120,
+    "current_v19": 0,
+    "fusion_applied": 0
+  },
+  "baseline_parity": 0.0,
+  "sha256": {
+    "PROTOCOL.md": "d80d6af4a3ede6b7ad3248bf8098f6a74c544e3072b03d8afc90e2673cc11985",
+    "capture.py": "13a402cfb9e5e5d162300dfbe274a5e57b6f4330b2a0a91e286775c919382c8c",
+    "capture.json": "7f8c716cefe5ca5a7e2379394c7ffc510887e6856ac32713950ab0a71e547ba5",
+    "analyze.py": "4deb1845870623c00718655611b6663b932077b118a09d23361944a8abc581e9",
+    "historical_width_pre198.py": "fed650c51ba51cd13b7f04ed13d876733cb79cea07012b99f587452826f12c64",
+    "results.json": "c2c4e87a97b41f1d440527c4edbc5fb240a2a28b969317c06799885b91d27f82",
+    "scored_rows.json": "522fc6f42e6f97ebd32ebabf1dd349d95fcacf5ca9a0df999fc09ddcc60636c6"
+  }
+}
