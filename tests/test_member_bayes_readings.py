@@ -85,6 +85,7 @@ def test_card_names_the_stored_reading():
     chart = source.index("function sdAxisOpts(")
     chart_end = source.index("function sdD0Trend(")
     script = ("const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
+              "const sdAgeSpan = (at, cls) => at ? `<span class='${cls}'>${at}</span>` : '—';\n"
               "const SD_COL = {P0: 'a', 'P0-M': 'b', P1: 'c', MKT: 'd', DET: 'e', MB: 'f', D0: 'g'};\n"
               "const sdN = (v, d) => v == null ? '—' : Number(v).toFixed(d);\n"
               "const sdSg = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);\n"
