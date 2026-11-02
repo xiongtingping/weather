@@ -1709,8 +1709,13 @@ def capture_follow_runs(
     timeout_seconds: float,
     as_of_utc: str | None = None,
     icon_download_workers: int | None = None,
+    targets: Sequence[tuple[str, int, int]] | None = None,
 ) -> dict[str, Any]:
     """Charter 192: bank ICON's and ECCC's newer runs for training, off the pass.
+
+    ``targets`` (family, lead, cycle) reads exactly those runs and nothing the
+    rungs, the per-event runs or the revisits would add: the pass's own
+    ``--fetch-follow`` (user 2026-11-02 「AIFS/AIGEFS 只抓一次」).
 
     Runs after the pass that served the rung, never inside it: a follow
     download is ~0.2-0.5GiB of ICON and holding the pass for it would delay
@@ -1744,15 +1749,16 @@ def capture_follow_runs(
     # The runs this job reaches: each rung's newest followed cycle per family,
     # then the runs a family follows per event date whatever the rung
     # (charter 193 amendment: ECMWF D-3 18Z for a D+2 day).
-    targets: list[tuple[str, int, int]] = []
-    for family in follow_run.FOLLOW_FAMILIES:
+    explicit = targets is not None
+    targets = [(str(f), int(lead), int(c)) for f, lead, c in (targets or ())]
+    for family in () if explicit else follow_run.FOLLOW_FAMILIES:
         for lead_days, rung_cycle in rungs:
             cycle = follow_run.follow_cycle_for_rung(
                 family, int(lead_days), rung_cycle
             )
             if cycle is not None and (family, int(lead_days), cycle) not in targets:
                 targets.append((family, int(lead_days), cycle))
-    for family in follow_run.EVENT_RUN_FAMILIES:
+    for family in () if explicit else follow_run.EVENT_RUN_FAMILIES:
         for lead_days, cycle in follow_run.event_follow_runs(family):
             if (family, int(lead_days), int(cycle)) not in targets:
                 targets.append((family, int(lead_days), int(cycle)))
@@ -1763,7 +1769,7 @@ def capture_follow_runs(
     # above went in.  Bounded to runs young enough that every publisher still
     # serves them (DWD keeps about a day); a file with nothing missing costs a
     # read of the file.
-    for family in dict.fromkeys(
+    for family in () if explicit else dict.fromkeys(
         (*follow_run.FOLLOW_FAMILIES, *follow_run.EVENT_RUN_FAMILIES)
     ):
         for run_init, held_path in follow_run.follow_archive_paths(
@@ -1917,6 +1923,17 @@ def _parse_follow_rung(value: str) -> tuple[int, int | None]:
     return lead, cycle
 
 
+def _parse_fetch_follow(value: str) -> tuple[str, int, int]:
+    family, _s, rest = str(value).partition(":")
+    lead_text, _s2, cycle_text = rest.partition(":")
+    if family not in (follow_run.AIFS_FAMILY, follow_run.AIGEFS_FAMILY):
+        raise argparse.ArgumentTypeError(f"fetch-follow family invalid: {value}")
+    lead, cycle = int(lead_text), int(cycle_text)
+    if lead not in (0, 1, 2) or cycle not in (0, 6, 12, 18):
+        raise argparse.ArgumentTypeError(f"fetch-follow run invalid: {value}")
+    return family, lead, cycle
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event-date", required=True)
@@ -2022,6 +2039,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="LEAD:CYCLE (CYCLE 'default' for the lead's own), repeatable.",
     )
     parser.add_argument(
+        "--fetch-follow",
+        action="append",
+        default=[],
+        type=_parse_fetch_follow,
+        help=(
+            "FAMILY:LEAD:CYCLE of a follow-only family (AIFS ENS, AIGEFS) that "
+            "just landed: read it, bank and ingest it, then run this pass, which "
+            "seats it -- one pass instead of a follow job and a re-seat."
+        ),
+    )
+    parser.add_argument(
         "--hold-family",
         action="append",
         default=[],
@@ -2045,6 +2073,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.follow_capture_only:
         return _follow_capture_main(args)
+    fetched = _fetch_follow_inline(args) if args.fetch_follow else None
     readiness = None
     if args.follow_new_runs:
         try:
@@ -2073,6 +2102,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             follow_serving_ready=readiness,
             hold_families=tuple(args.hold_family or ()),
         )
+        if fetched is not None:
+            result = {**result, "fetch_follow": fetched}
     except (ContractError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
         print(json.dumps({
             "schema": "official_native_ensemble_forward_capture_v1",
@@ -2202,6 +2233,48 @@ def _follow_capture_main(args: argparse.Namespace) -> int:
             "live_submit_authorized": False,
         }, ensure_ascii=False, sort_keys=True))
         return 2
+    result = _ingest_follow_archives(args, result)
+    # Charter 195 (三): what the object stores answered for this pass, per
+    # store -- hits and bytes not fetched, downloads and bytes fetched.
+    result = {
+        **result,
+        "nwp_object_store": object_store_stats(),
+        # Charter 195 (四): whether this pass waited out a transport outage.
+        "transport_breaker": transport_breaker.breaker().snapshot(),
+    }
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _fetch_follow_inline(args: argparse.Namespace) -> dict[str, Any]:
+    """``--fetch-follow``: the landed AIFS/AIGEFS run, read, banked and ingested
+    ahead of the pass that seats it (user 2026-11-02 「AIFS/AIGEFS 只抓一次：去掉
+    「先跟随、再重读」的两遍抓取」).  Its follow files sit beside ECMWF's and
+    GEFS's (the pass's ``follow_assignments`` reads them there).  A failure is a
+    receipt: the pass still runs on what is on disk."""
+
+    root = args.capture_root or (
+        args.ecmwf_output.expanduser().resolve().parent if args.ecmwf_output else None
+    )
+    if root is None:
+        return {"state": "BLOCKED_FAIL_CLOSED", "reason": "fetch_follow_capture_root_missing"}
+    try:
+        result = capture_follow_runs(
+            registry_path=args.market_registry,
+            event_date=str(args.event_date),
+            rungs=[],
+            capture_root=root,
+            timeout_seconds=float(args.timeout_seconds),
+            targets=list(args.fetch_follow),
+        )
+    except (ContractError, OSError, RuntimeError, ValueError) as exc:
+        return {"state": "BLOCKED_FAIL_CLOSED", "reason": f"{type(exc).__name__}:{exc}"[:300]}
+    return _ingest_follow_archives(args, result)
+
+
+def _ingest_follow_archives(args: argparse.Namespace, result: dict[str, Any]) -> dict[str, Any]:
+    """Ingest a follow capture's archives into the historical member table."""
+
     if args.commit and result["archive_paths"]:
         # The same frozen-fact replay the pass uses: a follow run already
         # ingested is verified, not repeated, and a refusal is reported
@@ -2264,16 +2337,7 @@ def _follow_capture_main(args: argparse.Namespace) -> int:
                 "BLOCKED_FAIL_CLOSED" if ingress_blocked else "COMMITTED"
             ),
         }
-    # Charter 195 (三): what the object stores answered for this pass, per
-    # store -- hits and bytes not fetched, downloads and bytes fetched.
-    result = {
-        **result,
-        "nwp_object_store": object_store_stats(),
-        # Charter 195 (四): whether this pass waited out a transport outage.
-        "transport_breaker": transport_breaker.breaker().snapshot(),
-    }
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0
+    return result
 
 
 if __name__ == "__main__":

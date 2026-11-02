@@ -319,6 +319,44 @@ SCHEMA = "bayes_basket_target_production_worker_v2"
 # says.  A hand `touch` is still an immediate e-stop for every lane.
 PRODUCTION_EXECUTION_MODE = "production_live"
 NO_LIVE_EXECUTION_MODE = "production_no_live"
+LIVE_PAUSE_FLAG_PATH = Path(__file__).resolve().parents[1] / "data" / "live_paused.flag"
+LIVE_INTENT_PATH = Path(__file__).resolve().parents[1] / "config" / "trading" / "live_intent_v1.json"
+
+
+def _live_strategy_on() -> bool:
+    """Whether this cycle runs the strategy stages (user 2026-11-02 「live未举旗，实盘关闭后
+    不考虑策略的生产周期问题」「实盘关闭就跳过策略环节」): the dashboard switch armed
+    (``live_intent_v1.live_enabled``) and the gateway pause flag down -- the two
+    operator gates ``live_control_server.set_live`` moves together.  Either one
+    off, or the intent unreadable, is off.  ``PM_STRATEGY_STAGES=always`` keeps
+    the strategy stages on regardless (tests, replays)."""
+
+    if str(os.environ.get("PM_STRATEGY_STAGES", "")).strip().lower() == "always":
+        return True
+    if LIVE_PAUSE_FLAG_PATH.exists():
+        return False
+    try:
+        intent = json.loads(LIVE_INTENT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(intent, Mapping) and intent.get("live_enabled") is True
+
+
+def _skipped_housekeeping(reason: str) -> dict[str, Any]:
+    """The housekeeping receipts for a cycle that did not run it (yet)."""
+
+    base = {"state": reason, "calls_order_gateway": False, "places_orders": False}
+    return {
+        "account_equity": dict(base),
+        "intent_reconcile": {**base, "schema": "bayes_basket_target_intent_reconcile_v1", "closed": 0},
+        "resting_reprice": {**base, "schema": "bayes_basket_target_resting_reprice_v1"},
+        "intent_retire": {**base, "schema": "bayes_basket_target_intent_retire_v1", "retired": 0},
+        "live_cycle_settle": {**base, "schema": "bayes_basket_target_live_cycle_settle_v1", "settled": 0},
+        "cash_phase_forward_observations": {
+            **base, "observation_count": 0, "written": False, "orders_submitted": 0,
+            "live_submit_authorized": False,
+        },
+    }
 MAX_PREPARED_CYCLES_PER_SCOPE = 1
 # What the ledger accepting a scope looks like.  Four of these write no
 # rows at all -- the decision they would write is already on file -- and
@@ -6103,6 +6141,7 @@ class TargetProductionWorker:
             follow_only = family in (
                 nwp_arrival_probe.AIFS_FAMILY, nwp_arrival_probe.AIGEFS_FAMILY
             )
+            fetch_follow: list[tuple[str, int, int]] = []
             if beyond_ladder or follow_only or family in (
                 nwp_arrival_probe.ICON_FAMILY, nwp_arrival_probe.ECCC_FAMILY
             ):
@@ -6111,7 +6150,14 @@ class TargetProductionWorker:
                     if beyond_ladder or follow_only
                     else _ARRIVAL_OWN_CYCLE_BY_LEAD.get(lead)
                 )
-                if own is None or run_init.hour != own:
+                # A follow-only run on a lead the ladder serves is read by the
+                # day's pass itself and seated by it (user 2026-11-02 「AIFS/AIGEFS
+                # 只抓一次：去掉「先跟随、再重读」的两遍抓取」): the follow job queued
+                # behind ICON's half-gigabyte pulls, then a second pass re-read the
+                # day -- 22 min median and up to 45 from landing to the archive.
+                if follow_only and not beyond_ladder:
+                    fetch_follow = [(family, int(lead), int(run_init.hour))]
+                elif own is None or run_init.hour != own:
                     queued = self._enqueue_arrival_follow(
                         event_date=event_date, lead=lead, run_init=run_init
                     )
@@ -6164,6 +6210,7 @@ class TargetProductionWorker:
                 inbox_path=inbox_path,
                 arrival=row,
                 forced_rungs=forced,
+                fetch_follow=fetch_follow,
             )
             outcome_state = str(result.get("state") or "")
             if outcome_state not in {"IN_FLIGHT", "DEFERRED_CAPTURE_SLOTS_BUSY"}:
@@ -6698,6 +6745,7 @@ class TargetProductionWorker:
         forced_rungs: Sequence[tuple[int, int | None, datetime]] | None = None,
         listing_station: str | None = None,
         hold_families: Sequence[str] = (),
+        fetch_follow: Sequence[tuple[str, int, int]] = (),
     ) -> dict[str, Any]:
         """Start a background capture for one scope; never block the caller.
 
@@ -7127,6 +7175,12 @@ class TargetProductionWorker:
         # Charter 195 (四): the required-first recovery pass.
         for family_name in hold_families:
             base_command += ["--hold-family", str(family_name)]
+        # A landed AIFS/AIGEFS run read by this pass itself, then seated by it
+        # (user 2026-11-02 「AIFS/AIGEFS 只抓一次」).
+        for family_name, follow_lead, follow_cycle in fetch_follow:
+            base_command += ["--fetch-follow", f"{family_name}:{int(follow_lead)}:{int(follow_cycle)}"]
+        if fetch_follow:
+            base_command += ["--capture-root", str(capture_root)]
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
@@ -20086,71 +20140,15 @@ class TargetProductionWorker:
                 result["cycle_interrupted"] = True
         return result
 
-    def _run_stages(self) -> dict[str, Any]:
-        if self.conn is None:
-            return _blocked(self._target_open_blocker())
-        if self.commit_error is not None:
-            return _blocked(self.commit_error)
-        if self.commit_conn is None:
-            # A writer that was never enabled is not an error, so it leaves
-            # ``commit_error`` unset and slips past the guard above with a
-            # None connection -- which then reaches the first of a dozen
-            # bare ``self.commit_conn.execute`` calls a hundred lines later
-            # and surfaces as ``AttributeError: 'NoneType' object has no
-            # attribute 'execute'``, naming neither the connection nor the
-            # switch.  It cost a wrong lead during the 2026-08-15 stall
-            # diagnosis.  Same reason string the forward preselection path
-            # already uses for the same condition.
-            return _blocked("target_atomic_writer_not_injected")
-        try:
-            # Schema-dispatching on purpose: self.activation_path is the live
-            # contract in live mode, and the narrow loader shut production for
-            # seven hours the first time and one more cycle the second.
-            activation = load_activation(self.activation_path)
-            self._assert_db_activation(activation)
-        except Exception as exc:
-            return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")
-        self._record_quote_lease_seconds(activation)
-        self._mark("activation")
-        # The fast lane, first of all (user, 2026-09-19: 「把taf和metar的抓取
-        # 入库和bayes更新优先级提高最高」).  New TAFs become P0-M and new
-        # reports become P1 before the intent reconcile below, which measured
-        # a 49s median and delayed both for no dependency: neither stage reads
-        # an intent, and the reconcile still runs before anything is priced
-        # or ordered.  Both read their watermark before their clock (charter
-        # 148's rule) and neither can raise, so nothing here can keep the
-        # reconcile from running.
-        self._early_p1_this_cycle = None
-        self._fast_lane_receipts = []
-        self._copy_follow_receipts = []
-        self._probability_chain_ran = False
-        self._regime_ran_this_cycle = False
-        early_report_watermark = _live_observation_watermark(
-            getattr(self, "canonical_source_conn", None)
-        )
-        early_now = utc_now()
-        self._early_p1_this_cycle = self._materialize_early_p1(
-            as_of_utc=early_now,
-            report_watermark=early_report_watermark,
-        )
-        self._early_p1_watermark = early_report_watermark
-        self._mark("early_p1")
-        self._last_fast_lane_checkpoint_mono = time.monotonic()
-        self._last_fast_lane_checkpoint_cost_sec = 0.0
-        # Close intents the exchange has already answered about, before the
-        # cycle spends anything on anything else.
-        #
-        # Above the market ingress on purpose.  This lane reads the exchange
-        # by deterministic order id and writes only this ledger; it has no
-        # use for quotes, inventory or a scope catalog, and it was sitting
-        # downstream of all of them.  That gate is soft today -- a failed
-        # ingress lets the cycle continue -- so the lane still ran, but a
-        # question about whether real money is resting at an exchange should
-        # not be answerable only when the market evidence happens to
-        # materialize.  Nothing above this point can keep it from running.
-        # Charter 141: read the real account before anything sizes off it.
-        # At most once a minute; a failed read leaves the last row to age out,
-        # and production refuses once it is older than the freshness bound.
+    def _order_housekeeping(self) -> dict[str, Any]:
+        """The cycle's order housekeeping and cash-phase flush, run behind the
+        probability chain while live is on (user 2026-11-02 「生产概率（p0、p1）优先」).
+
+        Unchanged in substance from when they led the cycle: close the intents
+        the exchange answered, reprice and retire resting rungs, settle ended
+        live cycles, read the account, then flush the cash-phase observations.
+        Each part is a receipt and never raises."""
+
         try:
             with self._span("account_equity_capture"):
                 account_equity_receipt = self._capture_account_equity(
@@ -20218,12 +20216,6 @@ class TargetProductionWorker:
                 "settled": 0,
             }
         self._mark("intent_reconcile")
-        scope = activation.get("target_scope")
-        if not isinstance(scope, Mapping):
-            return _blocked("target_scope_config_missing")
-        missing = [key for key in TARGET_SCOPE_KEYS if not str(scope.get(key) or "").strip()]
-        if missing:
-            return _blocked("target_scope_missing:" + ",".join(missing))
         try:
             cash_phase_forward_observations = (
                 self._flush_cash_phase_forward_observations()
@@ -20239,6 +20231,104 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
             }
         self._mark("cash_phase_flush")
+        return {
+            "account_equity": account_equity_receipt,
+            "intent_reconcile": intent_reconcile,
+            "resting_reprice": resting_reprice,
+            "intent_retire": intent_retire,
+            "live_cycle_settle": live_cycle_settle,
+            "cash_phase_forward_observations": cash_phase_forward_observations,
+        }
+
+    def _run_stages(self) -> dict[str, Any]:
+        if self.conn is None:
+            return _blocked(self._target_open_blocker())
+        if self.commit_error is not None:
+            return _blocked(self.commit_error)
+        if self.commit_conn is None:
+            # A writer that was never enabled is not an error, so it leaves
+            # ``commit_error`` unset and slips past the guard above with a
+            # None connection -- which then reaches the first of a dozen
+            # bare ``self.commit_conn.execute`` calls a hundred lines later
+            # and surfaces as ``AttributeError: 'NoneType' object has no
+            # attribute 'execute'``, naming neither the connection nor the
+            # switch.  It cost a wrong lead during the 2026-08-15 stall
+            # diagnosis.  Same reason string the forward preselection path
+            # already uses for the same condition.
+            return _blocked("target_atomic_writer_not_injected")
+        try:
+            # Schema-dispatching on purpose: self.activation_path is the live
+            # contract in live mode, and the narrow loader shut production for
+            # seven hours the first time and one more cycle the second.
+            activation = load_activation(self.activation_path)
+            self._assert_db_activation(activation)
+        except Exception as exc:
+            return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")
+        self._record_quote_lease_seconds(activation)
+        # Read once per cycle: the operator's live switch armed and the gateway
+        # pause flag down.  Off, the cycle is probability and market evidence only.
+        self._strategy_on = _live_strategy_on()
+        self._mark("activation")
+        # The fast lane, first of all (user, 2026-09-19: 「把taf和metar的抓取
+        # 入库和bayes更新优先级提高最高」).  New TAFs become P0-M and new
+        # reports become P1 before the intent reconcile below, which measured
+        # a 49s median and delayed both for no dependency: neither stage reads
+        # an intent, and the reconcile still runs before anything is priced
+        # or ordered.  Both read their watermark before their clock (charter
+        # 148's rule) and neither can raise, so nothing here can keep the
+        # reconcile from running.
+        self._early_p1_this_cycle = None
+        self._fast_lane_receipts = []
+        self._copy_follow_receipts = []
+        self._probability_chain_ran = False
+        self._regime_ran_this_cycle = False
+        early_report_watermark = _live_observation_watermark(
+            getattr(self, "canonical_source_conn", None)
+        )
+        early_now = utc_now()
+        self._early_p1_this_cycle = self._materialize_early_p1(
+            as_of_utc=early_now,
+            report_watermark=early_report_watermark,
+        )
+        self._early_p1_watermark = early_report_watermark
+        self._mark("early_p1")
+        self._last_fast_lane_checkpoint_mono = time.monotonic()
+        self._last_fast_lane_checkpoint_cost_sec = 0.0
+        # Close intents the exchange has already answered about, before the
+        # cycle spends anything on anything else.
+        #
+        # Above the market ingress on purpose.  This lane reads the exchange
+        # by deterministic order id and writes only this ledger; it has no
+        # use for quotes, inventory or a scope catalog, and it was sitting
+        # downstream of all of them.  That gate is soft today -- a failed
+        # ingress lets the cycle continue -- so the lane still ran, but a
+        # question about whether real money is resting at an exchange should
+        # not be answerable only when the market evidence happens to
+        # materialize.  Nothing above this point can keep it from running.
+        # Charter 141: read the real account before anything sizes off it.
+        # At most once a minute; a failed read leaves the last row to age out,
+        # and production refuses once it is older than the freshness bound.
+        # Probability first (user 2026-11-02 「生产周期里：生产概率（p0、p1）优先！」): the
+        # order housekeeping and the cash-phase flush below are strategy, not
+        # probability, and move behind the probability chain (``_order_housekeeping``,
+        # called after the truth increment); while live is off they do not run at
+        # all (「实盘关闭就跳过策略环节」).  Neither feeds P0 or P1, and their only
+        # consumers -- the forward plans and the decision loop -- still follow them.
+        housekeeping = _skipped_housekeeping(
+            "deferred_behind_probability" if self._strategy_on else "skipped_live_off"
+        )
+        account_equity_receipt = housekeeping["account_equity"]
+        intent_reconcile = housekeeping["intent_reconcile"]
+        resting_reprice = housekeeping["resting_reprice"]
+        intent_retire = housekeeping["intent_retire"]
+        live_cycle_settle = housekeeping["live_cycle_settle"]
+        cash_phase_forward_observations = housekeeping["cash_phase_forward_observations"]
+        scope = activation.get("target_scope")
+        if not isinstance(scope, Mapping):
+            return _blocked("target_scope_config_missing")
+        missing = [key for key in TARGET_SCOPE_KEYS if not str(scope.get(key) or "").strip()]
+        if missing:
+            return _blocked("target_scope_missing:" + ",".join(missing))
         # Charter 148: read before the clock, so a report committed in
         # between is inside this cycle's as-of read and at worst makes
         # the next cycle's head pass run once more -- never the reverse.
@@ -20609,7 +20699,11 @@ class TargetProductionWorker:
                 self._p0_replay_active_stations = set(active_native_stations)
                 self._p0_covered_official_watermark = official_mark
                 self._mark("native_p0_replay_compile")
-                self._fast_lane_checkpoint_if_due("after_native_p0_replay_compile")
+                # No P1 checkpoint here or after the OOS replay (user 2026-11-02
+                # 「生产概率（p0、p1）优先」): the probability chain right below
+                # writes the new P0 and then P1, and the after_regime checkpoint
+                # catches any report that landed meanwhile; a pass here only kept
+                # the new P0 waiting (12 s median, 38 s p90).
                 now_mono = time.monotonic()
                 last_oos_scan = getattr(
                     self,
@@ -20863,7 +20957,6 @@ class TargetProductionWorker:
                     "live_submit_authorized": False,
                 }
             self._mark("native_ensemble_oos")
-            self._fast_lane_checkpoint_if_due("after_native_ensemble_oos")
             # Before the chain, because the chain is the consumer: P1 resolves
             # each observation's truth-revision hash at compile time, and a
             # report identified after that compile is one this cycle's P1
@@ -20952,6 +21045,14 @@ class TargetProductionWorker:
                     "truth_increment"
                 )
             self._mark("truth_increment")
+            if self._strategy_on:
+                housekeeping = self._order_housekeeping()
+                account_equity_receipt = housekeeping["account_equity"]
+                intent_reconcile = housekeeping["intent_reconcile"]
+                resting_reprice = housekeeping["resting_reprice"]
+                intent_retire = housekeeping["intent_retire"]
+                live_cycle_settle = housekeeping["live_cycle_settle"]
+                cash_phase_forward_observations = housekeeping["cash_phase_forward_observations"]
             ws_scope_catalog = (
                 self._resident_ws_scope_catalog()
                 if self.market_manifest_path.is_file()
@@ -21023,6 +21124,9 @@ class TargetProductionWorker:
                     if _priority_station(item.get("station_id"))
                 },
             )
+            if not self._strategy_on:
+                # Basket plans are strategy: none while live is off.
+                preselection_order = []
             for position, scope_key in enumerate(preselection_order):
                 # Advance before the work, not after: whatever ends this pass
                 # -- an escaping exception, a lock, a restart -- the next one
@@ -21191,7 +21295,7 @@ class TargetProductionWorker:
             )
             self._mark("ws_scope_serving_state")
             if ws_scope_catalog and not open_ws_scopes:
-                if not forward_p0_preselections:
+                if not forward_p0_preselections and self._strategy_on:
                     raise ContractError(
                         "resident_target_ws_actionable_scope_missing"
                     )
@@ -21332,6 +21436,35 @@ class TargetProductionWorker:
             # false cross-generation drift.
             now = utc_now()
             self._mark("market_ingress")
+            if not self._strategy_on:
+                # Live off: probability and the market evidence the board and the
+                # readings use are done; post-fill recompute, the committed-scope
+                # sweep, the decision loop and the settlement lane are strategy.
+                return {
+                    "schema": SCHEMA,
+                    "ok": True,
+                    "state": "probability_only_live_off",
+                    "execution_mode": PRODUCTION_EXECUTION_MODE,
+                    "candidate_count": 0,
+                    "candidates": [],
+                    "ws_scope_catalog": self._ws_scope_catalog_summary(
+                        ws_scope_catalog
+                    ),
+                    "ws_scope_serving": ws_scope_serving,
+                    "market_ingress": market_ingress,
+                    "places_orders": False,
+                    "calls_order_gateway": False,
+                    "live_submit_authorized": False,
+                    "orders_submitted": 0,
+                    "resident_registry_ingress": resident_registry_ingress,
+                    "native_ensemble_ingress": native_ensemble_ingress,
+                    "native_ensemble_oos_ingress": native_ensemble_oos_ingress,
+                    "resident_probability_chain": resident_probability_chain,
+                    "regime_ingress": regime_ingress,
+                    "truth_materialization": truth_materialization,
+                    "strategy_stages": "skipped_live_off",
+                    "worker_checked_at": now,
+                }
             self._fast_lane_checkpoint_if_due("after_market_ingress")
             post_fill_recompute = self._consume_post_fill_recompute_requests(
                 activation=activation,

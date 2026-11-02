@@ -1267,3 +1267,25 @@ def test_an_icon_or_eccc_arrival_rides_the_newest_landed_rung_not_the_clocks(mon
     assert call["arrival"]["family"] == probe.ECCC_FAMILY
     (rung,) = call["forced_rungs"]
     assert rung[0] == 1 and rung[2] == datetime(2026, 9, 23, 0, tzinfo=timezone.utc)
+
+
+def test_an_aifs_or_aigefs_arrival_is_one_pass_that_reads_and_seats_it(monkeypatch, tmp_path) -> None:
+    """User 2026-11-02 「AIFS/AIGEFS 只抓一次：去掉「先跟随、再重读」的两遍抓取」: a landed
+    follow-only run starts the day's pass with ``fetch_follow`` -- it reads the
+    run, banks it and seats it -- and queues no follow job to be re-read later."""
+
+    for family in (probe.AIFS_FAMILY, probe.AIGEFS_FAMILY):
+        state = _probe_state(updated="2026-09-21T15:00:00Z", listed=("2026-09-22",), ready=[
+            (family, "2026-09-21T12:00:00Z", "2026-09-22"),
+        ])
+        worker, calls, follows = _trigger_worker(tmp_path, monkeypatch, state)
+        worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T15:00:30Z")
+        assert follows == []
+        (call,) = calls
+        assert call["fetch_follow"] == [(family, 1, 12)]
+        (rung,) = call["forced_rungs"]
+        assert rung[0] == 1
+        # Done once: the next call starts nothing for it.
+        calls.clear()
+        worker.run_arrival_triggered_captures(as_of_utc="2026-09-21T15:01:00Z")
+        assert calls == []

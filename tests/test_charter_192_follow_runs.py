@@ -1479,3 +1479,39 @@ def test_an_older_follow_file_of_the_date_is_revisited_once_a_newer_cycle_leads(
     )
     assert all(cycle != 12 for cycle, _ in asked)
     assert all(o["path"] != path.name for o in later["outcomes"])
+
+
+def test_explicit_targets_read_only_that_run(monkeypatch, tmp_path) -> None:
+    """User 2026-11-02 「AIFS/AIGEFS 只抓一次」: the pass's ``--fetch-follow`` asks for
+    exactly one landed run -- no rung-derived ICON/ECCC run, no per-event ECMWF
+    run, no revisit rides along."""
+
+    _install_station_registry(monkeypatch)
+    rows = _registry()["rows"]
+    monkeypatch.setattr(capture, "load_market_registry_snapshot", lambda _p: {"rows": rows})
+    calls: list[tuple[str, int, int]] = []
+
+    def fake(name):
+        def collect(**kw):
+            calls.append((name, kw["lead_days"], kw["run_cycle_hour"]))
+            run = follow_run.follow_run_init(DAY, kw["lead_days"], kw["run_cycle_hour"])
+            identity = {"schema": follow_run.archive_schema(follow_run.AIFS_FAMILY), "event_date": DAY,
+                        "run_init_utc": run.isoformat().replace("+00:00", "Z"),
+                        "training_only": True, "holdout_eligible": False,
+                        "captures": [{"station_id": s["station_id"]} for s in kw["station_scopes"]]}
+            return {**identity, "content_sha256": content_sha256(identity)}
+        return collect
+
+    for attr, name in (("capture_icon_eps_station_days", "icon"), ("capture_geps_station_days", "eccc"),
+                       ("capture_ecmwf_station_days", "ecmwf"), ("capture_aifs_station_days", "aifs"),
+                       ("capture_aigefs_station_days", "aigefs")):
+        monkeypatch.setattr(capture, attr, fake(name))
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    receipt = capture.capture_follow_runs(
+        registry_path=registry_path, event_date=DAY, rungs=[], capture_root=tmp_path,
+        timeout_seconds=30.0, as_of_utc="2026-08-01T05:00:00Z",
+        targets=[(follow_run.AIFS_FAMILY, 1, 12)],
+    )
+    assert calls == [("aifs", 1, 12)]
+    assert [(o["family"], o["state"]) for o in receipt["outcomes"]] == [(follow_run.AIFS_FAMILY, "CAPTURED")]

@@ -219,13 +219,16 @@ def test_the_reconcile_mark_is_split_into_its_four_lanes() -> None:
     112.1s.
     """
 
+    # The four lanes run in ``_order_housekeeping`` behind the probability
+    # chain since 2026-11-02 (「生产概率（p0、p1）优先」).
+    housekeeping = inspect.getsource(TargetProductionWorker._order_housekeeping)
     for span in (
         "reconcile_unresolved_intents",
         "reprice_resting_rungs",
         "retire_stranded_intents",
         "settle_live_cycles",
     ):
-        assert f'self._span("{span}")' in SOURCE, span
+        assert f'self._span("{span}")' in housekeeping, span
 
 
 def test_the_evidence_pass_is_split_into_its_two_loops() -> None:

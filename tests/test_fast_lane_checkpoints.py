@@ -193,9 +193,11 @@ def test_the_re_armed_checkpoints_sit_at_the_heavy_stage_boundaries_with_a_tier(
     # loop re-reads the book for the next scope -- 560s of checkpoints and
     # 573s of refreshes in one 1767s cycle.  The boundaries are outside the
     # loop and hold no lease.
+    # Not after the native P0 compile or the OOS replay (user 2026-11-02
+    # 「生产概率（p0、p1）优先」): the probability chain that follows them writes the
+    # new P0 then P1, and after_regime catches the reports that landed meanwhile.
     assert labels == sorted([
-        "after_native_p0_replay_compile", "after_native_ensemble_oos", "after_regime",
-        "after_forward_p0_loop", "after_market_ingress",
+        "after_regime", "after_forward_p0_loop", "after_market_ingress",
     ])
     source = Path(pw.__file__).read_text()
     assert '_fast_lane_checkpoint_if_due("in_decision_loop"' not in source
