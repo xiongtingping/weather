@@ -24046,16 +24046,15 @@ function sdNgrDetTable(day, G){
     const late = due ? (Date.now() - due.getTime()) / 3600e3 : null;
     const one = (x, i) => `<span class="${Math.abs(x[1]) < 0.05 ? "flat" : x[1] > 0 ? "up" : "down"}">${i ? "" : "<b>"}${String(x[0]).slice(11, 13)}Z ${sdSg(x[1], 1)}${i ? "" : "</b>"}</span>`;
     return `<tr><td><b>${sdEsc(SD_DET_LABEL[p] || p)}</b><div class="muted sd-sub">${sdEsc(p)}</div></td>
-      <td class="mono">${init ? String(init).slice(11, 13) + "Z" : "—"}<div class="muted sd-sub">${init ? sdLocal(init, true) : ""}</div></td>
+      <td class="mono">${init ? String(init).slice(11, 13) + "Z" : "—"}<div class="muted sd-sub">${init ? sdLocal(init, true) : ""}</div>${nextInit ? `<div class="muted sd-sub" title="按这家在本站的节奏推算">下一轮 ${nextInit.toISOString().slice(11, 13)}Z 约 ${sdLocal(due.toISOString(), true)}${late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>` : ""}</td>
       <td class="mono">${sdN(v, 1)}°C${prev ? `<div class="muted sd-sub">上一轮 ${sdN(prev[1], 1)}</div>` : ""}</td>
       <td class="mono ${b > 0 ? "up" : "down"}">${b == null ? "—" : sdSg(b, 2)}</td>
       <td class="mono"><b>${v == null ? "—" : sdN(v + (b || 0), 2)}°C</b></td>
-      <td class="mono">${steps.length ? `<div>${one(steps[0], 0)}</div>${steps.length > 1 ? `<div class="sd-last5">${steps.slice(1).map((x, i) => one(x, i + 1)).join(" ")}</div>` : ""}` : "—"}</td>
-      <td class="mono">${nextInit ? `${nextInit.toISOString().slice(11, 13)}Z<div class="muted sd-sub">约 ${sdLocal(due.toISOString(), true)}${late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>` : "—"}</td></tr>`;
+      <td class="mono">${steps.length ? `<div>${one(steps[0], 0)}</div>${steps.length > 1 ? `<div class="sd-last5">${steps.slice(1).map((x, i) => one(x, i + 1)).join(" ")}</div>` : ""}` : "—"}</td></tr>`;
   }).join("");
   const ct = G.centre_terms || {};
   return `<div class="sd-t" style="margin-top:10px">确定性预报 · 进 P0 的十家（宪章 281）</div>
-    <div class="scroll"><table class="sd-tab"><thead><tr><th>产品</th><th>run（起报，当地）</th><th>当日最高</th><th title="全队偏差，每日随分布回归拟合；正＝惯常报冷、往上抬">全队偏差</th><th>去偏后</th><th title="原值对这家上一轮的变化，新的在上">每轮增量</th><th title="按这家在本站的节奏推算">下一轮（当地）</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th>产品</th><th title="起报时次与当地时间；下一轮按这家在本站的节奏推算">run（起报，当地）· 下一轮</th><th>当日最高</th><th title="全队偏差，每日随分布回归拟合；正＝惯常报冷、往上抬">全队偏差</th><th>去偏后</th><th title="原值对这家上一轮的变化，新的在上">每轮增量</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">F（去偏后中位）<b>${sdN(G.f_c, 2)}°C</b> · 分歧 Z ${sdN(G.z, 2)}（进宽度）· 集合中心 μ<sub>E</sub> ${sdN(ct.ensemble_c, 2)}°C · F 取差的 ${sdN(100 * (ct.f_weight || 0), 0)}% → 拉动 <b>${sdSg(ct.f_pull_c, 2)}°C</b> · 辐射 ${sdSg(ct.radiation_c, 2)}°C · 常数 ${sdSg(ct.constant_c, 2)}°C ＝ μ <b>${sdN(G.mu_c, 2)}°C</b>，σ ${sdN(G.sd_c, 2)}°C${G.state === "SERVED" ? "" : `（分布回归未服务：${sdEsc(G.reason || "—")}）`}</div>`;
 }
 
@@ -24117,10 +24116,10 @@ function sdModels(day){
   };
   const nextRun = sid => {
     const N = MR[sid] || {};
-    if(!N.next_init_utc) return "—";
+    if(!N.next_init_utc) return "";
     const late = N.next_due_utc ? (Date.now() - Date.parse(N.next_due_utc)) / 3600e3 : null;
     const tip = `按本站日内节奏推：每 ${sdN(N.cycle_hours, 0)} 小时一轮，起报后约 ${sdN(N.lag_hours, 1)} 小时被 P0 用上`;
-    return `<span title="${sdEsc(tip)}">${String(N.next_init_utc).slice(11, 13)}Z</span><div class="muted sd-sub">${N.next_due_utc ? `约 ${sdLocal(N.next_due_utc, true)}` : "—"}${late != null && late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>`;
+    return `<div class="muted sd-sub" title="${sdEsc(tip)}">下一轮 ${String(N.next_init_utc).slice(11, 13)}Z${N.next_due_utc ? ` 约 ${sdLocal(N.next_due_utc, true)}` : ""}${late != null && late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>`;
   };
   const rows = models.slice().sort((a, b) => (shownW(b) || 0) - (shownW(a) || 0)).map(m => {
     const st = m.stats || {}, pv = m.prev, raw = m.raw;
@@ -24129,12 +24128,11 @@ function sdModels(day){
       : !pv && p0.previous_decided_at_utc ? ' <span class="pill">新入座</span>'
       : pv && !pv.seated && m.seated ? ' <span class="pill">重新入座</span>' : "";
     return `<tr${m.dropped ? ' style="opacity:.6"' : ""}><td><b>${sdEsc(m.system_id)}</b>${tag}<div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
-      <td class="mono">${sdEsc(m.run_cycle || "—")}${newRun ? ' <span class="pill">新 run</span>' : ""}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}${newRun ? `（上期 ${sdLocal(pv.run_init_utc, true)}）` : ""}</div></td>
+      <td class="mono">${sdEsc(m.run_cycle || "—")}${newRun ? ' <span class="pill">新 run</span>' : ""}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}${newRun ? `（上期 ${sdLocal(pv.run_init_utc, true)}）` : ""}</div>${nextRun(m.system_id)}</td>
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
       <td title="${sdEsc(served ? `分布回归的家族权重（宪章 281，每日拟合），在入座家族里归一；旧链权重 ${sdPc(m.weight)} 只在回退时用。旧链：${weightWhy}` : weightWhy)}"><div class="sd-wbar"><i style="width:${(100 * (shownW(m) || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(shownW(m))}</span>${served ? "" : pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}${served ? `<div class="muted sd-sub">旧链 ${sdPc(m.weight)}${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}</div>` : ""}</td>
       <td class="mono"><b>${sdN(m.calibrated_centre_c, 2)}°C</b>${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
       <td class="mono">${runSteps(m.system_id)}</td>
-      <td class="mono">${nextRun(m.system_id)}</td>
       <td class="sd-raw-c sd-gl">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span><div class="muted sd-sub">${raw.members} 成员</div>` : "—"}</td>
       <td>${raw && raw.mode && st.mode && raw.mode !== st.mode ? `<b title="校准把众数桶从 ${sdEsc(raw.mode)} 挪到了这里">${sdEsc(st.mode)}</b>` : sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}${last5(m.system_id)}</td>
 </tr>`;
@@ -24146,7 +24144,7 @@ function sdModels(day){
     ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}${served ? "在服务的分布回归用它自己的家族权重（每日拟合才变）；" : ""}${changed ? `${served ? "旧链" : ""}权重变化原因：${sdEsc(weightWhy)}。` : ""}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
     ${vsPrev}
-    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2" title="分布回归在服务时：它的家族权重（宪章 281）；下面小字是旧链（站点混合，宪章 199/242）的权重，只在回退时用">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th rowspan="2" title="按本站日内节奏推算的下一轮起报与被 P0 用上的当地时间">下一轮（当地）</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2" title="起报时次与当地时间；下一轮按本站日内节奏推算（起报与被 P0 用上的当地时间）">run（起报，当地）· 下一轮</th><th rowspan="2">校准提前量</th><th rowspan="2" title="分布回归在服务时：它的家族权重（宪章 281）；下面小字是旧链（站点混合，宪章 199/242）的权重，只在回退时用">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
       <tr><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${sdNgrDetTable(day, G)}
     <div class="muted sd-sub">P0 模型加权温度中心 ${sdN(p0.model_center_c, 2)}°C（各模型校准中心的加权值） · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
