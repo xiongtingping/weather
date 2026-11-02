@@ -204,3 +204,26 @@ def test_ngr_weights_are_the_fits_family_weights_and_f_share() -> None:
     assert all_six["ECMWF_AIFS"] == pytest.approx(3 / 8) and sum(all_six.values()) == pytest.approx(1)
     assert two == pytest.approx({"ECMWF": 0.25, "ECMWF_AIFS": 0.75})
     assert at36 == pytest.approx(0.25) and at12 == pytest.approx(0.25 - 0.1)
+
+
+def test_next_run_counts_only_cycles_a_seat_carries() -> None:
+    """User 2026-11-02 「晚了4.4 h」: ICON-EPS 18Z has cross-ensemble seats at
+    h12_24/h24_48 only, so inside 12 h the next run P0 can seat is 00Z."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE calibration_native_ensemble_activation (artifact_kind TEXT, station_id TEXT,"
+                 " season_bin TEXT, lead_bucket TEXT, valid_from_utc TEXT, valid_until_utc TEXT, run_cycle_by_system_json TEXT)")
+    conn.execute("CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT, stage TEXT,"
+                 " state TEXT, decision_at_utc TEXT, lineage_json TEXT)")
+    for lead, mix in (("h00_12", {"S": "12Z"}), ("h00_12", {"S": "00Z", "T": "18Z"}), ("h12_24", {"S": "18Z"})):
+        conn.execute("INSERT INTO calibration_native_ensemble_activation VALUES ('CROSS_NATIVE_ENSEMBLE','ZUUU','DESCENT',?,"
+                     "'2026-10-01T00:00:00Z','2026-12-01T00:00:00Z',?)", (lead, json.dumps(mix)))
+    lineage = {"season_bin": "DESCENT", "hour_lead_bucket_by_system_json": json.dumps({"S": "h00_12", "T": "h00_12"})}
+    seats = board._seatable_cycles(conn, "ZUUU", lineage, "2026-11-02T02:00:00Z")
+    assert seats == {"S": ["00Z", "12Z"], "T": ["18Z"]}
+    for at, init in (("2026-11-01T04:00:00Z", "2026-11-01T00:00:00Z"), ("2026-11-01T15:00:00Z", "2026-11-01T12:00:00Z")):
+        conn.execute("INSERT INTO basket_probability_envelope VALUES ('ZUUU','2026-11-02','P0','COMMITTED',?,?)",
+                     (at, json.dumps({"run_init_utc_by_system_json": json.dumps({"S": init}),
+                                      "native_calibrated_system_centers_c_json": json.dumps({"S": 20.0})})))
+    runs = board._model_runs(conn, "ZUUU", "2026-11-02", seatable=seats)["S"]
+    assert runs["next_init_utc"] == "2026-11-02T00:00:00Z" and runs["seatable_cycles"] == ["00Z", "12Z"]

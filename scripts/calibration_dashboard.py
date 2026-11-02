@@ -24118,7 +24118,9 @@ function sdModels(day){
     const N = MR[sid] || {};
     if(!N.next_init_utc) return "";
     const late = N.next_due_utc ? (Date.now() - Date.parse(N.next_due_utc)) / 3600e3 : null;
-    const tip = `按本站日内节奏推：每 ${sdN(N.cycle_hours, 0)} 小时一轮，起报后约 ${sdN(N.lag_hours, 1)} 小时被 P0 用上`;
+    const tip = (N.seatable_cycles || []).length
+      ? `本站此刻能入座的轮次：${N.seatable_cycles.join(" / ")}（按季节相位与提前量的有效席位；没有席位的轮次即使发布了也不会进 P0）；起报后约 ${sdN(N.lag_hours, 1)} 小时被 P0 用上`
+      : `按本站日内节奏推：每 ${sdN(N.cycle_hours, 0)} 小时一轮，起报后约 ${sdN(N.lag_hours, 1)} 小时被 P0 用上`;
     return `<div class="muted sd-sub" title="${sdEsc(tip)}">下一轮 ${String(N.next_init_utc).slice(11, 13)}Z${N.next_due_utc ? ` 约 ${sdLocal(N.next_due_utc, true)}` : ""}${late != null && late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>`;
   };
   const rows = models.slice().sort((a, b) => (shownW(b) || 0) - (shownW(a) || 0)).map(m => {

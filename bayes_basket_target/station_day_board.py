@@ -385,7 +385,33 @@ def _model_history(conn, station: str, day: str, axis, n: int = 5) -> list[dict[
     return out
 
 
-def _model_runs(conn, station: str, day: str, keep: int = 5) -> dict[str, dict[str, Any]]:
+def _seatable_cycles(conn, station: str, lineage: Mapping[str, Any], at_utc: str) -> dict[str, list[str]]:
+    """The cycles each system can sit at in this station's P0 right now: those
+    of the valid cross-ensemble seats (``calibration_native_ensemble_activation``)
+    for its season and the lead bucket each system is read at.  A run published
+    at a cycle no seat carries is never seated (ICON-EPS 18Z has seats at
+    h12_24/h24_48 only, so a day inside 12 h waits for 00Z -- user 2026-11-02
+    「晚了4.4 h」 on a run that was never going to come)."""
+
+    season = lineage.get("season_bin")
+    leads = _json(lineage.get("hour_lead_bucket_by_system_json"), {}) or {}
+    out: dict[str, set[str]] = {}
+    for lead in sorted({str(v) for v in leads.values() if v}):
+        rows = conn.execute(
+            "SELECT DISTINCT run_cycle_by_system_json FROM calibration_native_ensemble_activation"
+            " WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' AND station_id=? AND season_bin=? AND lead_bucket=?"
+            " AND valid_from_utc<=? AND valid_until_utc>?",
+            (station, season, lead, at_utc, at_utc),
+        ).fetchall()
+        for (mix,) in rows:
+            for system, cycle in (_json(mix, {}) or {}).items():
+                if leads.get(system) == lead and cycle:
+                    out.setdefault(str(system), set()).add(str(cycle))
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def _model_runs(conn, station: str, day: str, keep: int = 5,
+                seatable: Mapping[str, Sequence[str]] | None = None) -> dict[str, dict[str, Any]]:
     """Each system's runs over the day's P0 decisions (user 2026-11-02 「增加每次模型
     run的增量变化。增加模型下一次run的当地时间」): per run its calibrated centre at
     the last P0 that seated it, the change against the run before, and when P0
@@ -424,12 +450,22 @@ def _model_runs(conn, station: str, day: str, keep: int = 5) -> dict[str, dict[s
         cycle = min((g for g in gaps if g > 0), default=None)
         lag = statistics.median(lags) if lags else None
         newest = times[-1][0]
-        due = None if cycle is None or lag is None or newest is None else newest + timedelta(hours=cycle + lag)
+        # With the seats known, the next run is the first six-hourly cycle after
+        # the newest that a seat carries; without them, one shortest gap on.
+        hours = {int(c[:2]) for c in (seatable or {}).get(system, []) if c[:2].isdigit()}
+        nxt = None
+        if newest is not None and hours:
+            nxt = next((newest + timedelta(hours=6 * k) for k in range(1, 9)
+                        if (newest + timedelta(hours=6 * k)).hour in hours), None)
+        elif newest is not None and cycle is not None:
+            nxt = newest + timedelta(hours=cycle)
+        due = None if nxt is None or lag is None else nxt + timedelta(hours=lag)
         out[system] = {
             "runs": [{k: v for k, v in r.items()} for r in reversed(seq[-keep:])],
             "cycle_hours": None if cycle is None else round(cycle, 2),
             "lag_hours": None if lag is None else round(lag, 2),
-            "next_init_utc": None if cycle is None or newest is None else _iso(newest + timedelta(hours=cycle)),
+            "seatable_cycles": list((seatable or {}).get(system, [])),
+            "next_init_utc": None if nxt is None else _iso(nxt),
             "next_due_utc": None if due is None else _iso(due),
         }
     return out
@@ -575,7 +611,8 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
         "models": models,
         "previous_decided_at_utc": None if previous is None else previous["decided_at_utc"],
         "model_history": _model_history(conn, station, day, axis) if conn is not None else [],
-        "model_runs": _model_runs(conn, station, day) if conn is not None else {},
+        "model_runs": _model_runs(conn, station, day, seatable=_seatable_cycles(
+            conn, station, L, _iso(datetime.now(timezone.utc)))) if conn is not None else {},
         "weight_cause": _weight_cause(L, None if previous is None else previous["lineage"]),
         "run_cycle": L.get("run_cycle"), "lead_bucket": L.get("lead_bucket"),
         "season_bin": L.get("season_bin"),
