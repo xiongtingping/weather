@@ -24981,7 +24981,7 @@ function sdWrfRoutes(W){
       n: [W.nowcast_first, ...(W.nowcast_updates || [])].filter(Boolean).length} : null,
     fcst: f && f.tmax_c != null ? {v: f.tmax_c, init: f.init_utc, pts: f.series || [], m: f.members, ms: f.member_series || {}} : null};
 }
-function sdWrfDays(){
+function sdWrfDays(tab){
   const all = (SD.data || {}).days || [];
   const days = SD_WRF_ROLES.map(([role, word]) => [all.find(d => d.role === role), word]).filter(([d]) => d && d.wrf && d.wrf.state === "ok");
   if(!days.length) return "";
@@ -24991,7 +24991,10 @@ function sdWrfDays(){
   const wk = d => "日一二三四五六"[new Date(`${d}T12:00:00Z`).getUTCDay()];
   const errSpan = (v, t) => v == null || t == null ? "" : `<span class="${Math.abs(v - t) < 0.5 ? "up" : Math.abs(v - t) >= 1.5 ? "down" : "flat"}" title="减实测">${sdSg(v - t, 1)}</span>`;
   const row = (c, name, x, t, tip) => x ? `<div class="sd-wrf-r" title="${sdEsc(tip || "")}"><i style="background:${c}"></i><span>${name}</span><b>${sdN(x.v, 1)}°</b>${errSpan(x.v, t)}</div>` : "";
-  const pickDay = days.some(([d]) => d.event_date === SD.wrfDay) ? SD.wrfDay : (days.find(([d]) => d.role === "today") || days[0])[0].event_date;
+  // Each tab opens on its own day (user 2026-11-02 「站点看板：明日视角，没有wrf 板块」); a click is remembered per tab.
+  const picked = (SD.wrfDay || {})[tab.role];
+  const pickDay = days.some(([d]) => d.event_date === picked) ? picked
+    : (days.find(([d]) => d.event_date === tab.event_date) || days.find(([d]) => d.role === "today") || days[0])[0].event_date;
   const cards = days.map(([d, word]) => {
     const W = d.wrf, R = sdWrfRoutes(W), t = W.truth_c;
     const now = [R.ig, R.gfs].filter(Boolean).sort((a, b) => String(a.at).localeCompare(String(b.at))).pop();
@@ -25003,7 +25006,7 @@ function sdWrfDays(){
       : row(SD_WRF_COL.ig, "临近·IFS+GDPS", R.ig, t, R.ig ? `最新一版 ${loc(R.ig.at)} 出数（共 ${R.ig.n} 版）${R.ig.m ? ` · IFS ${sdN(R.ig.m.ifs, 1)} · GDPS ${sdN(R.ig.m.gdps, 1)}` : ""}` : "")
         + row(SD_WRF_COL.gfs, "临近·GFS", R.gfs, t, R.gfs ? `最新一版 ${loc(R.gfs.at)} 出数（共 ${R.gfs.n} 版）` : "")
         + row(SD_WRF_COL.fcst, "1 日预报", R.fcst, t, R.fcst ? `${init(R.fcst.init)} 起报，IFS+GDPS 平均` : "");
-    return `<div class="sd-wrf-day${d.event_date === pickDay ? " on" : ""}" role="button" tabindex="0" data-wrf-day="${sdEsc(d.event_date)}" onclick="sdWrfPick(this)">
+    return `<div class="sd-wrf-day${d.event_date === pickDay ? " on" : ""}" role="button" tabindex="0" data-wrf-day="${sdEsc(d.event_date)}" data-wrf-tab="${sdEsc(tab.role)}" onclick="sdWrfPick(this)">
       <div class="sd-sub">${word} ${sdEsc(d.event_date.slice(5))} 周${wk(d.event_date)}</div>
       <div class="sd-wrf-v" style="color:${col}">${lead ? `${sdN(lead.v, 1)}°C` : "—"}${lead && t != null ? errSpan(lead.v, t) : ""}</div>
       <div class="sd-sub">${how}${seen ? ` · ${seen}` : ""}</div>${rows}</div>`;
@@ -25017,7 +25020,7 @@ function sdWrfDays(){
     <div class="sd-wrf-days">${cards}</div>${panes}${foot}</details>`;
 }
 function sdWrfPick(el){
-  SD.wrfDay = el.dataset.wrfDay;
+  SD.wrfDay = Object.assign({}, typeof SD.wrfDay === "object" ? SD.wrfDay : {}, {[el.dataset.wrfTab]: el.dataset.wrfDay});
   const box = el.closest(".sd-wrf");
   box.querySelectorAll(".sd-wrf-day").forEach(e => e.classList.toggle("on", e === el));
   box.querySelectorAll("[data-wrf-pane]").forEach(e => { e.hidden = e.dataset.wrfPane !== el.dataset.wrfDay; });
@@ -25147,7 +25150,7 @@ function sdEvidence(day){
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}${rain4 && rain4.n ? sdRain4Line(rain4) : ""}`,
       `${sdRainSvg(P, O, day.precip_sat)}<span class="muted sd-sub" title="${sdEsc(`预报：${P.source_id} · ${P.lineage}（参考，不进任何层）\n实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`)}">预报取于 ${sdLocal(P.captured_at_utc,true)} · 来源 ⓘ</span>`, true);
   }
-  return `<div class="sd-t">证据：辐射、方向、云雨</div><div class="sd-evidence-cards">${rad}${sdMeanModeCard(day)}</div><div class="sd-evidence-solo">${dirCard}</div><div class="sd-evidence-solo">${rain}</div>${sdSky(day)}${day.role === "today" ? sdWrfDays() : ""}`;
+  return `<div class="sd-t">证据：辐射、方向、云雨</div><div class="sd-evidence-cards">${rad}${sdMeanModeCard(day)}</div><div class="sd-evidence-solo">${dirCard}</div><div class="sd-evidence-solo">${rain}</div>${sdSky(day)}${day.role === "today" || day.role === "ahead" ? sdWrfDays(day) : ""}`;
 }
 // Newest five rows shown, the rest folded (user 2026-10-09「只显示最近最新的5条，
 // 其他默认折叠」): ``rows`` are already newest first.
