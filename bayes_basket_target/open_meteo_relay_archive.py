@@ -189,6 +189,14 @@ def fetch_relay_run_for_targets(
             str(target["station_id"]), (float(target["latitude"]), float(target["longitude"]))
         )
     order = sorted(stations)
+    # One location, one hour first: the relay charges a "not available"
+    # answer per location like a real one, and the capture asks for the
+    # newest run on every pass its doorbell rings (any of the family's
+    # products landing a run).  Asked roster-wide, an unpublished IFS 9 km /
+    # UKMO 10 km run cost 49 a time and spent the lane's 1,500 by 03Z on
+    # 2026-11-01, leaving both relays (and momentum M's hres) a day behind.
+    if len(order) > 1 and not run_published(product, run_init, stations[order[0]]):
+        raise RunNotPublished(f"open_meteo_relay_run_not_published:{product}")
     series = fetch_run_series(product, run_init, [stations[s] for s in order])
     by_station = dict(zip(order, series))
     results: dict[tuple[str, str], dict[str, Any]] = {}

@@ -233,10 +233,12 @@ def test_one_request_serves_every_station_and_is_charged_per_location(monkeypatc
         {"station_id": "FACT", "latitude": -34.0, "longitude": 18.6, "event_date": date(2026, 9, 23), "utc_offset_hours": 2},
         {"station_id": "FACT", "latitude": -34.0, "longitude": 18.6, "event_date": date(2026, 9, 24), "utc_offset_hours": 2},
     ]
+    client.answers.insert(0, _Response(_series(RUN, 1, 10.0)))
     out = RELAY.fetch_relay_run_for_targets(product="IFS9KM", run_init=RUN, targets=targets)
-    assert len(client.calls) == 1 and client.calls[0]["cell_selection"] == "land"
-    assert client.calls[0]["run"] == "2026-09-22T12:00" and client.calls[0]["models"] == "ecmwf_ifs"
-    assert Q.spent(RELAY.QUOTA_LANE) == 2, "two locations, one call each"
+    assert len(client.calls) == 2 and client.calls[0]["forecast_hours"] == 1
+    assert client.calls[1]["cell_selection"] == "land"
+    assert client.calls[1]["run"] == "2026-09-22T12:00" and client.calls[1]["models"] == "ecmwf_ifs"
+    assert Q.spent(RELAY.QUOTA_LANE) == 1 + 2, "the one-location doorbell, then two locations"
     # Stations are asked in sorted order: FACT is the first series.
     assert out[("FACT", "2026-09-23")]["hourly_c"][10] == pytest.approx(10.0 + 1.0)
     assert len(out[("SBGR", "2026-09-23")]["hourly_c"]) == 24
@@ -247,6 +249,20 @@ def test_an_unpublished_run_is_named_so(monkeypatch):
     monkeypatch.setattr(RELAY, "_client", lambda: client)
     with pytest.raises(RELAY.RunNotPublished):
         RELAY.fetch_run_series("UKMO10", RUN, [(51.5, 0.0)])
+
+
+def test_an_unpublished_run_costs_one_location_not_the_roster(monkeypatch):
+    # 2026-11-01: asked roster-wide, each "not available" cost 49 and the
+    # lane's day was gone by 03Z.
+    client = _Client([_Response({"error": True, "reason": "The requested model run is not available."}, 400)])
+    monkeypatch.setattr(RELAY, "_client", lambda: client)
+    targets = [
+        {"station_id": s, "latitude": float(i), "longitude": float(i), "event_date": date(2026, 9, 23), "utc_offset_hours": 0}
+        for i, s in enumerate(("EGLC", "KLGA", "RJTT"))
+    ]
+    with pytest.raises(RELAY.RunNotPublished):
+        RELAY.fetch_relay_run_for_targets(product="UKMO10", run_init=RUN, targets=targets)
+    assert len(client.calls) == 1 and Q.spent(RELAY.QUOTA_LANE) == 1
 
 
 def test_the_daily_limit_stops_every_relay_call_until_utc_midnight(monkeypatch):
