@@ -16468,11 +16468,15 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-rel-h{font-weight:600;margin:14px 0 0;font-size:13px}.sd-rel-h small{font-weight:400;color:var(--muted);margin-left:8px}
 .sd-chain{display:grid;grid-template-columns:minmax(0,.9fr) 44px minmax(0,1fr) 44px minmax(0,1fr);gap:0;margin:8px 0 12px;align-items:stretch}
 .sd-chain.sd-chain-2{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}
-.sd-chain>.sd-chain-in{grid-template-columns:minmax(0,1fr);margin:0}
 .sd-chain-a{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:2px}
 .sd-ngr-terms{display:inline-flex;flex-wrap:wrap;gap:2px 8px}.sd-ngr-terms b{color:var(--text)}
 .sd-chain-a span{font-size:22px;line-height:1}.sd-chain-a small{font-size:10.5px;white-space:nowrap}
 @media (max-width:900px){.sd-chain,.sd-chain.sd-chain-2{grid-template-columns:minmax(0,1fr)}.sd-chain-a{flex-direction:row;padding:4px 0}.sd-chain-a span{transform:rotate(90deg)}}
+/* The chain's cards share one row grid (user 2026-11-02 「确定性预报、P0 概率和p1概率三张卡片没有对齐，
+   设计风格不一致」): each card is eight slots -- head, value, comparisons, line, trend, box,
+   recent changes, foot -- and a subgrid lines each slot up across the three. */
+@media (min-width:901px){.sd-chain{grid-template-rows:repeat(8,auto)}.sd-chain>.sd-mc.sd-mc-slots{grid-row:span 8;display:grid;grid-template-rows:subgrid;row-gap:0}.sd-chain>.sd-chain-a{grid-row:span 8}}
+.sd-mc-slots>.sd-slot{min-width:0}.sd-mc-slots>.sd-mc-main{align-self:end}
 .sd-hit-wrap{margin:4px 0 12px}.sd-hit-h{font-weight:600;margin:0 0 6px}.sd-hit-h small{font-weight:400;color:var(--muted);margin-left:6px}
 .sd-hit-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:8px}
 @media (max-width:1300px){.sd-hit-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
@@ -22687,7 +22691,7 @@ function sdProbabilityCards(day, split){
     const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；模型中心 ${sdN(e.model_center_c, 2)}°C（服务分布回归时即回归中心 μ），与分布均值不同` : ""}`;
     const rootLabel = `根均值（${sdEsc(e.root_stage || "前序阶段")}）`;
     const corner = "";
-    return sdModelCard({title, tag: descriptions[stage], color: SD_COL[stage], corner,
+    return (split ? sdChainCard : sdModelCard)({title, tag: descriptions[stage], color: SD_COL[stage], corner,
       fresh: sdAgeSpan(e.decided_at_utc, "sd-age sd-bare"),
       value: sdTemperature(st.mean_c), valueTip: `${centerLabel}；决策于 ${sdLocal(e.decided_at_utc, true)}`,
       mode: st.mode, modeP: st.mode_p,
@@ -22695,7 +22699,7 @@ function sdProbabilityCards(day, split){
             ["比市场", mk == null || st.mean_c == null ? null : st.mean_c - mk, "分布均值减市场均值"]],
       sub: [`<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
             stage !== "P0" ? `<span title="本阶段实际引用的前序信封（服务向量）的分布均值，更新前的输入">${rootLabel} <b>${sdN((e.stage_move || {}).pre ? e.stage_move.pre.mean_c : null, 2)}°C</b></span>` : ""].filter(Boolean).join(" · "),
-      trend: sdStageTrend(day, stage), body: (stage === "P0" ? sdNgrBlock(e.ngr) : sdStageMove(e, stage)) + sdRecentRuns(day, stage)});
+      trend: sdStageTrend(day, stage), body: stage === "P0" ? sdNgrBlock(e.ngr) : sdStageMove(e, stage), body2: sdRecentRuns(day, stage)});
   });
   if(split) return {P0: cards[0], P1: cards[1]};
   return cards.join("");
@@ -23284,8 +23288,24 @@ function sdModelCard(o){
     + `<div class="sd-mc-main" title="${sdEsc(o.valueTip || "")}"><b class="sd-mc-v">${o.value}</b>${o.mode ? `<span class="sd-mc-mode">${o.modeLabel || "众数"} <b>${sdEsc(o.mode)}</b>${o.modeP != null ? ` ${sdPc(o.modeP, 0)}` : ""}</span>` : ""}</div>`
     + (cmp ? `<div class="sd-mc-cmps">${cmp}</div>` : "")
     + (o.sub ? `<div class="sd-mc-sub">${o.sub}</div>` : "")
-    + (o.trend || "") + (o.body || "")
+    + (o.trend || "") + (o.body || "") + (o.body2 || "")
     + (o.foot ? `<div class="muted sd-sub sd-mc-foot">${o.foot}</div>` : "") + `</div>`;
+}
+// The production chain's cards (sdChain): the same parts, every slot present
+// even when empty, so the chain's subgrid lines them up across the cards.
+function sdChainCard(o){
+  if(o.empty != null) return sdModelCard(o);
+  const cmp = (o.cmp || []).filter(c => c && c[1] != null && isFinite(c[1])).map(([label, d, tip]) =>
+    `<span class="sd-mc-cmp ${d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}" title="${sdEsc(tip || "")}">${label} <b>${sdSg(d, o.dg != null ? o.dg : 2)}°C</b></span>`).join("");
+  return `<div class="sd-evidence-card sd-det-card sd-mc sd-mc-slots" style="--c:${o.color}">`
+    + `<div class="sd-slot"><div class="sd-mc-h"><span class="sd-mc-t">${o.title}</span>${o.tag ? `<span class="sd-mc-tag">${o.tag}</span>` : ""}${o.fresh || ""}</div>${o.corner || ""}</div>`
+    + `<div class="sd-mc-main sd-slot" title="${sdEsc(o.valueTip || "")}"><b class="sd-mc-v">${o.value}</b>${o.mode ? `<span class="sd-mc-mode">${o.modeLabel || "众数"} <b>${sdEsc(o.mode)}</b>${o.modeP != null ? ` ${sdPc(o.modeP, 0)}` : ""}</span>` : ""}</div>`
+    + `<div class="sd-mc-cmps sd-slot">${cmp}</div>`
+    + `<div class="sd-mc-sub sd-slot">${o.sub || ""}</div>`
+    + `<div class="sd-slot">${o.trend || ""}</div>`
+    + `<div class="sd-slot">${o.body || ""}</div>`
+    + `<div class="sd-slot">${o.body2 || ""}</div>`
+    + `<div class="muted sd-sub sd-mc-foot sd-slot">${o.foot || ""}</div></div>`;
 }
 const SD_MB_SYS = {ECMWF_IFS_ENS_OPEN_PF50: "IFS", ECMWF_AIFS_ENS_GLOBAL: "AIFS", DWD_ICON_GLOBAL_EPS: "ICON",
                    NOAA_GEFS_05: "GEFS", ECCC_GEM_GLOBAL_ENS: "GEM", NOAA_AIGEFS_OPS_025: "AIGEFS"};
@@ -23627,7 +23647,7 @@ function sdChain(day){
   const p = sdProbabilityCards(day, true);
   const side = [sdMemberBayes(day), sdD0(day), sdMos(day), sdWrf(day), sdBestMatch(day)].filter(Boolean), reports = sdTafMetar(day);
   return `<div class="sd-rel-h">生产链 <small>车道读的概率：P1 有就读 P1，没有读 P0</small></div>
-    <div class="sd-chain${det ? "" : " sd-chain-2"}">${det ? `<div class="sd-four sd-chain-in">${det}</div>${arrow(fWord, fTip)}` : ""}${p.P0 || ""}${arrow("× 实况", "P1＝P0 × 实况报文似然，再施已报最高的下界（宪章 150/283）")}${p.P1 || ""}</div>
+    <div class="sd-chain${det ? "" : " sd-chain-2"}">${det ? `${det}${arrow(fWord, fTip)}` : ""}${p.P0 || ""}${arrow("× 实况", "P1＝P0 × 实况报文似然，再施已报最高的下界（宪章 150/283）")}${p.P1 || ""}</div>
     ${side.length || reports ? `<div class="sd-rel-h">旁证 <small>只读，不进生产；模型卡片都与 P1、市场比</small></div>
     <div class="sd-four${side.length === 4 ? "" : side.length === 5 ? " sd-five" : " sd-three"}">${side.join("")}${reports}</div>` : ""}`;
 }
@@ -23704,10 +23724,10 @@ function sdDeterministic(day, chain){
   // The median only, not each model (user 2026-10-18「确定性预报不要各个模型的曲线」).
   const chart = sdTimeTempChart([{pts: sdDetMedian(day), stroke: SD_COL.DET, width: 2, marks: sdDetMedian(day), label: "F 中位"}], null, null, {day: day.event_date, ...sdAxisOpts(day)});
   const trend = chart ? `<div class="sd-d0-trend">${chart}</div>` : "";
-  const body = `<div class="sd-det-grid">${chips}</div>` + sdDetRecent(day, rows);
+  const body = `<div class="sd-det-grid">${chips}</div>`, body2 = sdDetRecent(day, rows);
   const newest = rows.map(r => r.knowable_at_utc).filter(Boolean).sort().pop();
   const fresh = newest ? sdAgeSpan(newest, "sd-age sd-bare") : "";
-  if(!F || F.f_c == null) return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, fresh, value: "F 暂无", trend, body});
+  if(!F || F.f_c == null) return (chain ? sdChainCard : sdModelCard)({title, tag: "宪章 267", color: SD_COL.DET, fresh, value: "F 暂无", trend, body, body2});
   const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
   const p0 = ((day.stages || {})["P0"] || {}).model_center_c;
   // In the chain the headline is what flows into P0: the regression's F (ten
@@ -23715,13 +23735,13 @@ function sdDeterministic(day, chain){
   // execution-layer number and reads as one line below it.
   const ngr = ((day.stages || {})["P0"] || {}).ngr || {};
   if(chain && ngr.f_c != null) {
-    return sdModelCard({title, tag: "P0 的输入", color: SD_COL.DET, fresh, trend,
+    return sdChainCard({title, tag: "P0 的输入", color: SD_COL.DET, fresh, trend, body2,
       value: `F ${sdN(ngr.f_c, 2)}°C`, valueTip: `十家确定性逐家减全队偏差后的中位数，P0 分布回归的输入（宪章 281）`,
       cmp: [["比 P0", ngr.mu_c == null ? null : ngr.f_c - ngr.mu_c, "F 减 P0 回归中心 μ"], ["比市场", mk == null ? null : ngr.f_c - mk, "F 减市场均值"]],
       sub: `<span title="挂牌前 F（宪章 267）：执行层数字，不进 P0">挂牌前 F ${sdN(F.f_c, 2)}°C</span> · <span title="进挂牌前 F 的各家原始最高温中位">原始中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
       body, foot: "各家最新一轮的当日最高温；箭头＝比上一轮"});
   }
-  return sdModelCard({title, tag: "宪章 267", color: SD_COL.DET, fresh, trend,
+  return (chain ? sdChainCard : sdModelCard)({title, tag: "宪章 267", color: SD_COL.DET, fresh, trend, body2,
     value: `F ${sdN(F.f_c, 2)}°C`, valueTip: `挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdLocal(F.computed_at_utc, true)}`,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? F.f_c - bel.mean : null, "F 减当前服务信念均值"], ["比市场", mk == null ? null : F.f_c - mk, "F 减市场均值"]],
     sub: [`<span title="进 F 的 ${sdEsc(F.n_systems ?? "—")} 家原始最高温的中位">中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
@@ -23879,6 +23899,31 @@ function sdModels(day){
         : `<span class="${x > 0 ? "up" : "down"}" title="${sdEsc(c.mode)}">${x > 0 ? "↑+" : "↓−"}${Math.abs(x).toFixed(1)}点</span>`;
     }).join(" ")}</div>`;
   };
+  // Each run's change in the system's calibrated centre against its run before,
+  // newest first, and when the next run should reach P0 (user 2026-11-02
+  // 「增加每次模型run的增量变化。增加模型下一次run的当地时间」; p0.model_runs).
+  const MR = p0.model_runs || {};
+  // Why the weights moved against the P0 before (user 2026-11-02 「这里模型权重变化的原因是什么？」):
+  // the station mixture's daily refit (charter 199/242) and the seat's own weights.
+  const WC = p0.weight_cause || {};
+  const weightWhy = !p0.previous_decided_at_utc ? "" : [
+    WC.refit ? `本站集合权重每日重拟合（宪章 199/242 站点对数分混合）：新参数算于 ${sdLocal(WC.params_computed_at_utc, true)}（当地）${(WC.days_added || []).length ? `，每家多纳入 ${WC.days_added.join("/")} 个已结算日` : ""}` : "",
+    WC.seat_changed ? "席位权重变了（换 run 或提前量档）" : "",
+    WC.state !== WC.state_before ? `重加权状态 ${WC.state_before || "—"}→${WC.state || "—"}` : ""].filter(Boolean).join("；") || "权重没有可归因的变化";
+  const runSteps = sid => {
+    const R = (MR[sid] || {}).runs || [];
+    const steps = R.filter(r => r.change_c != null);
+    if(!steps.length) return "—";
+    const one = (r, i) => `<span class="${Math.abs(r.change_c) < 0.05 ? "flat" : r.change_c > 0 ? "up" : "down"}" title="${sdEsc(`${String(r.init_utc).slice(5, 13).replace("T", " ")}Z 校准中心 ${sdN(r.centre_c, 2)}°C，比上一轮 ${sdSg(r.change_c, 2)}°C；P0 首次用于 ${sdLocal(r.first_used_utc, true)}（当地）`)}">${i ? "" : "<b>"}${String(r.init_utc).slice(11, 13)}Z ${sdSg(r.change_c, 2)}${i ? "" : "</b>"}</span>`;
+    return `<div>${one(steps[0], 0)}</div>` + (steps.length > 1 ? `<div class="sd-last5">${steps.slice(1).map((r, i) => one(r, i + 1)).join(" ")}</div>` : "");
+  };
+  const nextRun = sid => {
+    const N = MR[sid] || {};
+    if(!N.next_init_utc) return "—";
+    const late = N.next_due_utc ? (Date.now() - Date.parse(N.next_due_utc)) / 3600e3 : null;
+    const tip = `按本站日内节奏推：每 ${sdN(N.cycle_hours, 0)} 小时一轮，起报后约 ${sdN(N.lag_hours, 1)} 小时被 P0 用上`;
+    return `<span title="${sdEsc(tip)}">${String(N.next_init_utc).slice(11, 13)}Z</span><div class="muted sd-sub">${N.next_due_utc ? `约 ${sdLocal(N.next_due_utc, true)}` : "—"}${late != null && late > 0 ? ` <span style="color:var(--amber)">晚 ${sdN(late, 1)} h</span>` : ""}</div>`;
+  };
   const rows = models.map(m => {
     const st = m.stats || {}, pv = m.prev, raw = m.raw;
     const newRun = pv && pv.run_init_utc && m.run_init_utc && pv.run_init_utc !== m.run_init_utc;
@@ -23888,12 +23933,11 @@ function sdModels(day){
     return `<tr${m.dropped ? ' style="opacity:.6"' : ""}><td><b>${sdEsc(m.system_id)}</b>${tag}<div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
       <td class="mono">${sdEsc(m.run_cycle || "—")}${newRun ? ' <span class="pill">新 run</span>' : ""}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}${newRun ? `（上期 ${sdLocal(pv.run_init_utc, true)}）` : ""}</div></td>
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
-      <td><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
+      <td title="${sdEsc(weightWhy)}"><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
       <td class="mono"><b>${sdN(m.calibrated_centre_c, 2)}°C</b>${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
-      <td class="mono sd-raw-c sd-gl">${raw ? `${sdN(raw.mean_c, 2)}°C<div class="muted sd-sub">${raw.members} 成员</div>` : "—"}</td>
-      <td class="mono">${sdN(st.mean_c, 2)}°C${pv ? dv(st.mean_c, pv.mean_c, 2, "") : ""}</td>
-      <td class="mono">${raw && st.mean_c != null ? `<b class="${st.mean_c - raw.mean_c >= 0 ? "up" : "down"}">${sdSg(st.mean_c - raw.mean_c, 2)}</b>` : "—"}</td>
-      <td class="sd-raw-c sd-gl">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span>` : "—"}</td>
+      <td class="mono">${runSteps(m.system_id)}</td>
+      <td class="mono">${nextRun(m.system_id)}</td>
+      <td class="sd-raw-c sd-gl">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span><div class="muted sd-sub">${raw.members} 成员</div>` : "—"}</td>
       <td>${raw && raw.mode && st.mode && raw.mode !== st.mode ? `<b title="校准把众数桶从 ${sdEsc(raw.mode)} 挪到了这里">${sdEsc(st.mode)}</b>` : sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}${last5(m.system_id)}</td>
 </tr>`;
   }).join("");
@@ -23901,11 +23945,11 @@ function sdModels(day){
   const changed = models.filter(m => m.dropped || !m.prev || (m.prev.run_init_utc !== m.run_init_utc)
     || Math.abs((m.weight || 0) - (m.prev.weight || 0)) >= 0.0005).length;
   const vsPrev = p0.previous_decided_at_utc
-    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心/均值按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}</div>` : "";
+    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}${changed ? `权重变化原因：${sdEsc(weightWhy)}。` : ""}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
     ${vsPrev}
-    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th colspan="3" class="sd-grp sd-gl">均值</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
-      <tr><th class="sd-raw-c sd-gl" title="这一期 P0 读到的原始成员最高温的平均">校准前</th><th title="订正偏差、调宽度之后这家模型自己分布的均值；箭头＝对上一期 P0">校准后</th><th title="校准后均值 − 校准前均值：订正把这家往暖（+）或往冷（−）挪了多少">移动</th><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th rowspan="2" title="按本站日内节奏推算的下一轮起报与被 P0 用上的当地时间">下一轮（当地）</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
+      <tr><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">P0 模型加权温度中心 ${sdN(p0.model_center_c, 2)}°C（各模型校准中心的加权值） · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
       Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>`;
 }

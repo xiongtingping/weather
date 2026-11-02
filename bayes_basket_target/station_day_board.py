@@ -27,6 +27,7 @@ import math
 import os
 import re
 import sqlite3
+import statistics
 import sys
 from contextvars import ContextVar
 from datetime import date, datetime, time as dtime, timedelta, timezone
@@ -384,6 +385,78 @@ def _model_history(conn, station: str, day: str, axis, n: int = 5) -> list[dict[
     return out
 
 
+def _model_runs(conn, station: str, day: str, keep: int = 5) -> dict[str, dict[str, Any]]:
+    """Each system's runs over the day's P0 decisions (user 2026-11-02 「增加每次模型
+    run的增量变化。增加模型下一次run的当地时间」): per run its calibrated centre at
+    the last P0 that seated it, the change against the run before, and when P0
+    first used it; the next run is due one run gap after the newest (the
+    shortest gap seen -- a missed run doubles a gap, never halves one), plus
+    the median delay from issue to first use -- this station's own rhythm,
+    never a schedule.  Newest run first, at most ``keep``."""
+
+    rows = conn.execute(
+        "SELECT decision_at_utc, json_extract(lineage_json,'$.run_init_utc_by_system_json'),"
+        " json_extract(lineage_json,'$.native_calibrated_system_centers_c_json')"
+        " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+        " AND +stage='P0' AND state='COMMITTED' ORDER BY decision_at_utc",
+        (station, day),
+    ).fetchall()
+    runs: dict[str, dict[str, dict[str, Any]]] = {}
+    for at, inits, centres in rows:
+        centres = _json(centres, {}) or {}
+        for system, init in (_json(inits, {}) or {}).items():
+            if not init:
+                continue
+            run = runs.setdefault(str(system), {}).setdefault(str(init), {"init_utc": str(init), "first_used_utc": str(at)})
+            if centres.get(system) is not None:
+                run["centre_c"] = _float(centres.get(system))
+    out = {}
+    for system, by_init in runs.items():
+        seq = sorted(by_init.values(), key=lambda r: r["init_utc"])
+        for before, run in zip(seq, seq[1:]):
+            if run.get("centre_c") is not None and before.get("centre_c") is not None:
+                run["change_c"] = round(run["centre_c"] - before["centre_c"], 3)
+        times = [(_utc(r["init_utc"]), _utc(r["first_used_utc"])) for r in seq]
+        gaps = [(b[0] - a[0]).total_seconds() / 3600 for a, b in zip(times, times[1:]) if a[0] and b[0]]
+        lags = [(u - i).total_seconds() / 3600 for i, u in times if i and u and u >= i]
+        # Runs P0 met already late (the day's first) say nothing of the delay.
+        lags = lags[1:] if len(lags) > 1 else lags
+        cycle = min((g for g in gaps if g > 0), default=None)
+        lag = statistics.median(lags) if lags else None
+        newest = times[-1][0]
+        due = None if cycle is None or lag is None or newest is None else newest + timedelta(hours=cycle + lag)
+        out[system] = {
+            "runs": [{k: v for k, v in r.items()} for r in reversed(seq[-keep:])],
+            "cycle_hours": None if cycle is None else round(cycle, 2),
+            "lag_hours": None if lag is None else round(lag, 2),
+            "next_init_utc": None if cycle is None or newest is None else _iso(newest + timedelta(hours=cycle)),
+            "next_due_utc": None if due is None else _iso(due),
+        }
+    return out
+
+
+def _weight_cause(head: Mapping[str, Any], previous: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Why the served ensemble weights moved against the P0 before (user 2026-11-02
+    「这里模型权重变化的原因是什么？」): the station mixture's daily refit
+    (charter 199/242, ``fusion_blend``) and the seat's own weights, read off the
+    two receipts."""
+
+    if previous is None:
+        return None
+    now, before = _json(head.get("fusion_blend_json"), {}) or {}, _json(previous.get("fusion_blend_json"), {}) or {}
+    days_now, days_before = now.get("days_by_system") or {}, before.get("days_by_system") or {}
+    added = sorted({int(days_now[k]) - int(days_before[k]) for k in days_now if k in days_before
+                    and days_now[k] is not None and days_before[k] is not None} - {0})
+    return {
+        "state": now.get("state"), "state_before": before.get("state"),
+        "refit": now.get("params_id") != before.get("params_id"),
+        "params_computed_at_utc": now.get("params_computed_at_utc"),
+        "params_computed_before_utc": before.get("params_computed_at_utc"),
+        "days_added": added,
+        "seat_changed": (now.get("seat_weights") or {}) != (before.get("seat_weights") or {}),
+    }
+
+
 def _with_previous(models: list[dict[str, Any]], previous: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Each model beside what the previous P0 had for it (user 2026-10-05
     「run的更新变化、权重的变化、校准中心、均值等变化在表里标注」); a model the
@@ -500,6 +573,8 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
         "models": models,
         "previous_decided_at_utc": None if previous is None else previous["decided_at_utc"],
         "model_history": _model_history(conn, station, day, axis) if conn is not None else [],
+        "model_runs": _model_runs(conn, station, day) if conn is not None else {},
+        "weight_cause": _weight_cause(L, None if previous is None else previous["lineage"]),
         "run_cycle": L.get("run_cycle"), "lead_bucket": L.get("lead_bucket"),
         "season_bin": L.get("season_bin"),
         "model_center_c": _float(L.get("model_center_c")),
@@ -671,7 +746,8 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
         # P0's NGR inputs besides the ensemble runs (charter 281's receipt, stored as text).
         " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.deterministic'),"
         " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.L'),"
-        " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.radiation_standardised')"
+        " json_extract(json_extract(lineage_json,'$.p0_ngr_json'),'$.radiation_standardised'),"
+        " json_extract(json_extract(lineage_json,'$.fusion_blend_json'),'$.params_computed_at_utc')"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
         " AND state='COMMITTED' AND stage IN ('P0','P1') ORDER BY decision_at_utc",
         (station, day),
@@ -771,6 +847,9 @@ def _ngr_cause(now: Sequence[Any], before: Sequence[Any]) -> list[str]:
     r0, r1 = _float(before[2]), _float(now[2])
     if r0 is not None and r1 is not None and abs(r1 - r0) >= 0.005:
         out.append(f"辐射分 {r0:+.2f}→{r1:+.2f}")
+    # The station's ensemble weights refit daily (charter 199/242).
+    if len(now) > 3 and len(before) > 3 and now[3] and before[3] and now[3] != before[3]:
+        out.append("集合权重日拟合更新")
     return out
 
 

@@ -116,6 +116,9 @@ def test_p0_change_cause_names_its_ngr_inputs() -> None:
         "确定性 CMA 10-31 18Z→11-01 12Z、GFS 12Z→18Z", "提前量 16→15 小时", "辐射分 -0.68→-0.48"]
     assert board._timeline_cause("P0", before, before) == ["同一批 run 重算"]
     assert board._timeline_cause("P0", head, head) == ["同一批 run 重算"]
+    # The station's ensemble weights refit daily (charter 199/242).
+    assert board._timeline_cause("P0", before + ("2026-11-02T00:13:28Z",), before + ("2026-11-01T00:20:29Z",)) \
+        == ["集合权重日拟合更新"]
 
 
 def test_recent_tables_show_ten_and_fold_the_older_five() -> None:
@@ -140,3 +143,42 @@ def test_recent_tables_show_ten_and_fold_the_older_five() -> None:
     assert "展开更早 5 次" in folded and 'class="sd-recent"' in folded
     assert 'class="sd-recent open"' in opened and "收起" in opened
     assert "最近 3 次" in short and "sd-recent-more" not in short
+
+
+def test_model_runs_give_each_run_its_increment_and_the_next_run() -> None:
+    """User 2026-11-02 「增加每次模型run的增量变化。增加模型下一次run的当地时间」:
+    per system, each run's calibrated centre against its run before, and the next
+    run one shortest gap after the newest plus the median delay to first use."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT, stage TEXT,"
+                 " state TEXT, decision_at_utc TEXT, lineage_json TEXT)")
+    def p0(at, init, centre):
+        lineage = {"run_init_utc_by_system_json": json.dumps({"S": init}),
+                   "native_calibrated_system_centers_c_json": json.dumps({"S": centre})}
+        conn.execute("INSERT INTO basket_probability_envelope VALUES ('ZUUU','2026-11-02','P0','COMMITTED',?,?)",
+                     (at, json.dumps(lineage)))
+    p0("2026-11-01T03:00:00Z", "2026-10-31T18:00:00Z", 20.0)   # met late: says nothing of the delay
+    p0("2026-11-01T05:00:00Z", "2026-11-01T00:00:00Z", 20.4)
+    p0("2026-11-01T11:00:00Z", "2026-11-01T06:00:00Z", 20.1)
+    p0("2026-11-01T12:00:00Z", "2026-11-01T06:00:00Z", 20.2)   # the run's last centre counts
+    runs = board._model_runs(conn, "ZUUU", "2026-11-02")["S"]
+    assert [r["init_utc"][11:13] for r in runs["runs"]] == ["06", "00", "18"]
+    assert runs["runs"][0]["change_c"] == pytest.approx(-0.2) and runs["runs"][1]["change_c"] == pytest.approx(0.4)
+    assert runs["cycle_hours"] == 6 and runs["lag_hours"] == 5
+    assert runs["next_init_utc"] == "2026-11-01T12:00:00Z" and runs["next_due_utc"] == "2026-11-01T17:00:00Z"
+
+
+def test_weight_cause_names_the_daily_refit() -> None:
+    """User 2026-11-02 「这里模型权重变化的原因是什么？」: the station mixture's daily
+    refit (charter 199/242) moved the weights; the receipt says when and how
+    many settled days it added."""
+
+    before = {"fusion_blend_json": json.dumps({"state": "APPLIED", "params_id": "a", "seat_weights": {"S": 1.0},
+                                               "params_computed_at_utc": "2026-11-01T00:20:29Z", "days_by_system": {"S": 78, "T": 7}})}
+    now = {"fusion_blend_json": json.dumps({"state": "APPLIED", "params_id": "b", "seat_weights": {"S": 1.0},
+                                            "params_computed_at_utc": "2026-11-02T00:13:28Z", "days_by_system": {"S": 79, "T": 8}})}
+    cause = board._weight_cause(now, before)
+    assert cause["refit"] and cause["days_added"] == [1] and not cause["seat_changed"]
+    assert cause["params_computed_at_utc"] == "2026-11-02T00:13:28Z"
+    assert board._weight_cause(now, None) is None
