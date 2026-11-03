@@ -14546,26 +14546,64 @@ def _save_every_run_last(
 
 
 #: The inputs a live-book section reads, as one cheap key (user 2026-11-03
-#: 「我都没开启实盘为什么还要读？」): the order book, its fills, the settled
-#: labels and truth only grow, and the control files are the trading
+#: 「我都没开启实盘为什么还要读？」): table -> the columns whose content the
+#: key hashes, or None for an insert-only table (its highest rowid moves
+#: with every new row).  The intents and their reconciliations are updated in
+#: place (states, fills, cancels), so their rows are hashed; they are small
+#: (13.5k and 12k rows on 11-03).  The control files are the trading
 #: directory.  While none moved -- with live off, for days -- the last value
 #: is the value, and the run reads nothing else.
-LIVE_BOOK_STATE_TABLES = (
-    "basket_target_order_intents",
-    "basket_target_order_events",
-    "basket_target_order_reconciliations",
-    "basket_station_day_settlement_label",
-    "calibration_station_daily_high_truth",
-)
+LIVE_BOOK_STATE_TABLES: dict[str, str | None] = {
+    "basket_target_order_intents": "rowid, state, requested_size, requested_notional_usdc",
+    "basket_target_order_events": None,
+    "basket_target_order_reconciliations": (
+        "rowid, exchange_order_id, state, filled_size, filled_notional_usdc, last_event_id, updated_at"
+    ),
+    "basket_station_day_settlement_label": None,
+    "calibration_station_daily_high_truth": None,
+}
+#: Each lane page's own tables beyond the live book, keyed the same way:
+#: rows a lane updates in place (plan states, legs) are hashed whole.
+LANE_STATE_TABLES: dict[str, dict[str, str | None]] = {
+    "proper_bet_lane": {"proper_bet_lane_evaluation": "*"},
+    "tail_short_lane": {"tail_short_lane_evaluation": None},
+    "fade_lanes": {"fade_lane_evaluation": None},
+    "pair_maker_lane": {"pair_maker_plans": "*", "pair_maker_merges": "*"},
+    "copy_follow_lane": {
+        "copy_follow_source_trades": None, "copy_follow_lane_evaluation": None,
+        "copy_follow_state": "*",
+    },
+}
 
 
-def _live_book_state_key(conn: sqlite3.Connection, *args: Any) -> str | None:
+def _table_state(conn: sqlite3.Connection, table: str, columns: str | None) -> Any:
+    """One table's part of a state key, read once a paged run: the eight
+    sections keyed on the live book share its tables."""
+
+    held = _PAGED_RUN.setdefault("table_state", {}) if _PAGED_RUN else {}
+    if (table, columns) in held:
+        return held[(table, columns)]
+    held[(table, columns)] = value = _table_state_read(conn, table, columns)
+    return value
+
+
+def _table_state_read(conn: sqlite3.Connection, table: str, columns: str | None) -> Any:
+    if not _table_exists(conn, table):
+        return None
+    if columns is None:
+        return conn.execute(f'SELECT MAX(rowid) FROM "{table}"').fetchone()[0]
+    digest = hashlib.sha256()
+    for row in conn.execute(f'SELECT {columns} FROM "{table}" ORDER BY rowid'):
+        digest.update(repr(row).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _book_state_key(
+    tables: Mapping[str, str | None], conn: sqlite3.Connection, *args: Any,
+) -> str | None:
     if not isinstance(conn, sqlite3.Connection):
         return None
-    parts: list[Any] = []
-    for table in LIVE_BOOK_STATE_TABLES:
-        if _table_exists(conn, table):
-            parts.append([table, conn.execute(f'SELECT MAX(rowid) FROM "{table}"').fetchone()[0]])
+    parts: list[Any] = [[table, _table_state(conn, table, columns)] for table, columns in tables.items()]
     for path in sorted((ROOT / "config" / "trading").glob("*.json")):
         try:
             stat = path.stat()
@@ -14579,12 +14617,24 @@ def _live_book_state_key(conn: sqlite3.Connection, *args: Any) -> str | None:
     return hashlib.sha256(json.dumps(parts, default=str).encode("utf-8")).hexdigest()
 
 
+def _live_book_state_key(conn: sqlite3.Connection, *args: Any) -> str | None:
+    return _book_state_key(LIVE_BOOK_STATE_TABLES, conn, *args)
+
+
+def _lane_state_key(name: str) -> Any:
+    tables = {**LIVE_BOOK_STATE_TABLES, **LANE_STATE_TABLES[name]}
+    return lambda conn, *args: _book_state_key(tables, conn, *args)
+
+
 #: Every-run sections that are served from their last value while their
-#: inputs' key is unchanged (``_cached_section_value``).
+#: inputs' key is unchanged (``_cached_section_value``).  The realisation
+#: layer is not here: it shows its fit's age off the clock, and reads in
+#: under a second.
 EVERY_RUN_STATE_KEYS = {
     "live_readiness": _live_book_state_key,
     "live_days": _live_book_state_key,
     "live_money": _live_book_state_key,
+    **{name: _lane_state_key(name) for name in LANE_STATE_TABLES},
 }
 
 

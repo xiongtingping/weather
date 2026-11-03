@@ -1204,15 +1204,44 @@ def test_a_live_book_section_whose_inputs_did_not_move_reads_nothing(paged) -> N
     # User 2026-11-03 「我都没开启实盘为什么还要读？」: with the book, its fills,
     # the labels and the control files where they were, the last value stands.
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE basket_target_order_intents(order_intent_id TEXT)")
+    conn.execute("CREATE TABLE basket_target_order_intents(order_intent_id TEXT, state TEXT,"
+                 " requested_size REAL, requested_notional_usdc REAL)")
+    conn.execute("INSERT INTO basket_target_order_intents VALUES('a','submitted',5,1.0)")
     calls: list[str] = []
-    first = C._cached_section("live_money", _collector(calls), conn)
+
+    def run() -> None:
+        C._PAGED_RUN.pop("table_state", None)  # a new run reads the tables again
+        C._cached_section("live_money", _collector(calls), conn)
+
+    run()
     C._SECTION_CACHE_LOG.clear()
-    second = C._cached_section("live_money", _collector(calls), conn)
-    assert calls == ["v"] and second == first
+    run()
+    assert calls == ["v"]
     assert C._SECTION_CACHE_LOG["live_money"]["reused"] is True
     assert C._SECTION_CACHE_LOG["live_money"]["inputs_unchanged_since"]
-    # A new intent is a new book.
-    conn.execute("INSERT INTO basket_target_order_intents VALUES('a')")
-    C._cached_section("live_money", _collector(calls), conn)
+    # An intent changed in place (a cancel) is a new book, as is a new one.
+    conn.execute("UPDATE basket_target_order_intents SET state='cancelled'")
+    run()
+    assert calls == ["v", "v"]
+    conn.execute("INSERT INTO basket_target_order_intents VALUES('b','submitted',5,1.0)")
+    run()
+    assert calls == ["v", "v", "v"]
+
+
+def test_a_lane_page_is_keyed_on_its_own_tables_too(paged) -> None:
+    # User 2026-11-03 「改」: the lanes' pages read their own tables beside the book.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE pair_maker_plans(plan_id TEXT, plan_state TEXT)")
+    conn.execute("INSERT INTO pair_maker_plans VALUES('p','formed')")
+    calls: list[str] = []
+
+    def run() -> None:
+        C._PAGED_RUN.pop("table_state", None)
+        C._cached_section("pair_maker_lane", _collector(calls), conn)
+
+    run()
+    run()
+    assert calls == ["v"]
+    conn.execute("UPDATE pair_maker_plans SET plan_state='paired'")
+    run()
     assert calls == ["v", "v"]
