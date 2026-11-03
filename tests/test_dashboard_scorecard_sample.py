@@ -384,14 +384,14 @@ def test_a_settled_day_is_scored_once_and_read_back_identically(tmp_path, monkey
     assert _without_ages(first) == _without_ages(unpaged)
     assert _without_ages(second) == _without_ages(unpaged)
     whole_reads = [sql for sql in reads if "probabilities_json" in sql]
-    closed_through = (TODAY - timedelta(days=C.STATION_DAY_CLOSED_DAYS)).isoformat()
-    # Read again: the days not yet closed, and the closed days the anchor cuts.
+    # Read again: only the days the anchor cuts.  Open days are held too
+    # (user 2026-11-03 「把它改成只读按日增量的部分」) and, unchanged, not read.
     expected = conn.execute(
         "SELECT COUNT(*) FROM (SELECT event_date, MIN(decision_at_utc) AS first,"
         " MAX(decision_at_utc) AS last FROM calibration_cross_native_ensemble_oos_prediction"
         " GROUP BY station_id, event_date)"
-        " WHERE last >= ? AND (event_date > ? OR first < ?)",
-        (window["since"], closed_through, window["since"]),
+        " WHERE last >= ? AND first < ?",
+        (window["since"], window["since"]),
     ).fetchone()[0]
     assert 0 < len(whole_reads) == expected, (len(whole_reads), expected)
 
@@ -412,3 +412,53 @@ def test_a_late_row_on_a_kept_day_is_read_again(tmp_path, monkeypatch) -> None:
     monkeypatch.delitem(C._PAGED_RUN, "probe")
     fresh = C.collect_calibration_scorecard(conn, window_override=window)
     assert _without_ages(kept_again) == _without_ages(fresh)
+
+
+def test_a_grown_day_reads_only_its_new_rows(tmp_path, monkeypatch) -> None:
+    # User 2026-11-03 「把它改成只读按日增量的部分」: a held day that grew is
+    # read past its held rowid only, and the sums equal a whole read.
+    conn = _memo_store()
+    window = {"since": f"{(TODAY - timedelta(days=30)).isoformat()}T00:00:00Z",
+              "until": "9999-12-31T00:00:00Z", "version": "t"}
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setitem(C._PAGED_RUN, "probe", True)
+    C.collect_calibration_scorecard(conn, window_override=window)
+    for back in (1, 12):
+        conn.execute(
+            "INSERT INTO calibration_cross_native_ensemble_oos_prediction"
+            " SELECT * FROM calibration_cross_native_ensemble_oos_prediction"
+            " WHERE station_id='ZUUU' AND event_date=? AND lead_bucket='h24_48' LIMIT 2",
+            ((TODAY - timedelta(days=back)).isoformat(),))
+    reads: list[str] = []
+    conn.set_trace_callback(reads.append)
+    grown = C.collect_calibration_scorecard(conn, window_override=window)
+    conn.set_trace_callback(None)
+    row_reads = [sql for sql in reads if "probabilities_json" in sql]
+    assert len(row_reads) == 2 and all("rowid>0" not in sql for sql in row_reads), row_reads
+    monkeypatch.delitem(C._PAGED_RUN, "probe")
+    assert _without_ages(grown) == _without_ages(C.collect_calibration_scorecard(conn, window_override=window))
+
+
+def test_a_day_that_lost_rows_is_read_whole(tmp_path, monkeypatch) -> None:
+    # Cold offload deletes superseded rows; the held sums still count them.
+    conn = _memo_store()
+    window = {"since": f"{(TODAY - timedelta(days=30)).isoformat()}T00:00:00Z",
+              "until": "9999-12-31T00:00:00Z", "version": "t"}
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setitem(C._PAGED_RUN, "probe", True)
+    C.collect_calibration_scorecard(conn, window_override=window)
+    day = (TODAY - timedelta(days=7)).isoformat()
+    conn.execute(
+        "DELETE FROM calibration_cross_native_ensemble_oos_prediction WHERE rowid IN (SELECT rowid FROM"
+        " calibration_cross_native_ensemble_oos_prediction WHERE station_id='KLGA' AND event_date=? LIMIT 2)", (day,))
+    conn.execute(
+        "INSERT INTO calibration_cross_native_ensemble_oos_prediction"
+        " SELECT * FROM calibration_cross_native_ensemble_oos_prediction"
+        " WHERE station_id='KLGA' AND event_date=? LIMIT 1", (day,))
+    reads: list[str] = []
+    conn.set_trace_callback(reads.append)
+    after = C.collect_calibration_scorecard(conn, window_override=window)
+    conn.set_trace_callback(None)
+    assert [sql for sql in reads if "probabilities_json" in sql and "rowid>0" in sql], reads
+    monkeypatch.delitem(C._PAGED_RUN, "probe")
+    assert _without_ages(after) == _without_ages(C.collect_calibration_scorecard(conn, window_override=window))

@@ -123,9 +123,31 @@ def test_a_truth_revision_reads_the_day_again(paged, monkeypatch) -> None:
     truth[("ZUUU", revised)] += 1.0
     seen.clear()
     C._landing_entries(conn, truth, {}, stage="P0", floor=None)
-    closed_through = (TODAY - timedelta(days=C.STATION_DAY_CLOSED_DAYS)).isoformat()
-    assert revised in seen
-    assert all(day == revised or day > closed_through for day in seen), sorted(set(seen))
+    # Every settled day is held, recent ones too (user 2026-11-03
+    # 「前端所有都是改为只读按日增量的部分」): only the revised day is read.
+    assert set(seen) == {revised}, sorted(set(seen))
+
+
+def test_a_seat_stored_after_the_first_read_reads_the_day_again(paged, monkeypatch) -> None:
+    conn = sqlite3.connect(":memory:")
+    truth = _bridge(conn)
+    monkeypatch.setattr(center_width_store, "serving_cells_by_day", _fake_cells)
+    seen: list[str] = []
+
+    def entry(stage, cell, truth_, seats):
+        seen.append(cell["event_date"])
+        return _entry(stage, cell, truth_, seats)
+
+    monkeypatch.setattr(C, "_center_landing_entry", entry)
+    first = C._landing_entries(conn, truth, {}, stage="P0", floor=None)
+    day = (TODAY - timedelta(days=1)).isoformat()
+    decided = sorted(d for d, e in first[day] if e["station"] == "KLGA")[0]
+    seen.clear()
+    C._landing_entries(conn, truth, {}, stage="P0", floor=None)
+    assert seen == []
+    seats = {("KLGA", day, decided): {"seat_keys": ["21°C"], "state": "symmetric"}}
+    C._landing_entries(conn, truth, seats, stage="P0", floor=None)
+    assert set(seen) == {day}, sorted(set(seen))
 
 
 # ---------------------------------------------------------------------------

@@ -255,12 +255,16 @@ def _windows_setup(monkeypatch, tmp_path, truth):
     )
     floors: list = []
 
-    def cells(_conn, _truth, *, stage, min_decision_at_utc=None):
-        floors.append((stage, min_decision_at_utc))
+    def cells(_conn, _truth, *, stage, min_decision_at_utc=None, pre_band=True, max_decision_at_utc=None):
+        floors.append((stage, min_decision_at_utc, max_decision_at_utc))
         out: dict = {}
         for s, d, e in DAYS:
-            if stage == "P1" and f"{d}T01:00:00Z" >= (min_decision_at_utc or ""):
-                out.setdefault(d, []).append({"station_id": s, "event_date": d, "e": e})
+            first = f"{d}T01:00:00Z"
+            if stage == "P1" and first >= (min_decision_at_utc or "") and (
+                max_decision_at_utc is None or first <= max_decision_at_utc
+            ):
+                out.setdefault(d, []).append({"station_id": s, "event_date": d, "e": e,
+                                              "decision_at_utc": first})
         return out
 
     monkeypatch.setattr(store, "_truth", lambda _conn: truth)
@@ -301,20 +305,22 @@ def test_closed_days_are_kept_and_a_moved_truth_is_read_again(monkeypatch, tmp_p
     truth = {(s, d): 20.0 for s, d, _e in DAYS}
     conn, floors = _windows_setup(monkeypatch, tmp_path, truth)
     first = C.collect_station_calibration_windows(conn)
-    assert floors == [("P1", "2026-08-01T01:00:00Z")]
-    # 2026-09-20 is the last closed day (four back from the 24th): the next
-    # read starts at the first decision of the oldest day not kept.
+    assert floors and floors[0][1] == "2026-08-01T01:00:00Z"
+    # Every settled day is held (user 2026-11-03 「前端所有都是改为只读按日增量的部分」):
+    # the next run reads nothing.
+    floors.clear()
     again = C.collect_station_calibration_windows(conn)
-    assert floors[-1] == ("P1", "2026-09-21T01:00:00Z")
+    assert floors == []
     assert again == first
-    # A revised truth on a kept day sends the read back to that day.
+    # A revised truth on a held day reads that day's own span only.
     truth[("BBB", "2026-09-02")] = 21.0
     C.collect_station_calibration_windows(conn)
-    assert floors[-1] == ("P1", "2026-09-02T01:00:00Z")
-    # Outside a paged run nothing is kept: the read is whole.
+    assert floors == [("P1", "2026-09-02T01:00:00Z", "2026-09-02T05:00:00Z")]
+    # Outside a paged run nothing is held: every day is read.
     monkeypatch.delitem(C._PAGED_RUN, "test")
+    floors.clear()
     C.collect_station_calibration_windows(conn)
-    assert floors[-1] == ("P1", "2026-08-01T01:00:00Z")
+    assert floors[0][1] == "2026-08-01T01:00:00Z"
 
 
 def test_window_table_stars_the_closest_column_and_leads_with_its_order(monkeypatch, tmp_path):
