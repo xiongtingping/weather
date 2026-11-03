@@ -650,3 +650,40 @@ def test_retired_labels_systems_and_unmapped_stations_are_not_kept_alive():
     health = clock.certificate_health(conn, now=T0)
     assert health["unrenewed_scope_count"] == 0
     assert health["health"] == "green"
+
+
+def test_the_board_memo_finds_the_full_scans_scopes_as_rows_arrive_and_time_moves():
+    # User 2026-11-03 「前端所有都是改为只读按日增量的部分」: the board folds only
+    # the activations minted since its last run; the answer is the full scan's.
+    conn = _db()
+    _stalled_scope(conn)
+    memo: dict = {}
+
+    def both(at):
+        full = clock.certificate_health(conn, now=at)
+        kept = clock.certificate_health(conn, now=at, scope_memo=memo)
+        assert kept == full
+        return full
+
+    assert both(T0)["unrenewed_scope_count"] == 3
+    top = memo["top_rowid"]
+    # A run with nothing new reads no old row.
+    reads: list[str] = []
+    conn.set_trace_callback(reads.append)
+    clock.certificate_health(conn, now=T0, scope_memo=memo)
+    conn.set_trace_callback(None)
+    assert any(f"rowid>{top}" in sql for sql in reads), reads
+    # The lane renews: fresh rows arrive and the scopes leave the warning.
+    clock.renew_expiring_certificates(conn, now=T0, commit=True)
+    assert both(T0 + timedelta(hours=1))["unrenewed_scope_count"] == 0
+    # Past every end: nothing live, nothing to warn about.
+    assert both(T0 + timedelta(days=40))["unrenewed_scope_count"] == 0
+    # A row minted to start later stays pending until it starts.
+    _mint_cross(
+        conn, cycle_by_system={SYSTEMS[0]: "00Z", SYSTEMS[1]: "06Z"},
+        valid_from=T0 + timedelta(days=45), valid_until=T0 + timedelta(days=50),
+        generation=9, with_evidence=False,
+    )
+    conn.commit()
+    assert both(T0 + timedelta(days=41))["unrenewed_scope_count"] == 0
+    assert both(T0 + timedelta(days=46))["unrenewed_scope_count"] == 1

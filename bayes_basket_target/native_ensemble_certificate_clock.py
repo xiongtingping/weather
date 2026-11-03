@@ -286,6 +286,151 @@ def stalled_system_scopes(
     ]
 
 
+STALLED_SCOPE_MEMO_SCHEMA = "stalled_scope_memo_v1"
+
+
+def stalled_scopes_incremental(
+    conn: sqlite3.Connection,
+    memo: Mapping[str, Any] | None,
+    *,
+    now_text: str,
+    horizon_text: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """``stalled_cross_scopes`` and ``stalled_system_scopes`` off the rows
+    added since ``memo`` was built, and the memo to keep for next time.
+
+    User 2026-11-03 「前端所有都是改为只读按日增量的部分」: the board's
+    certificate section re-scanned every live cross activation (~850,000
+    rows, 31 s warm, 259 s inside a swapping render) once an hour.  The
+    table is insert-only and cold offload removes only expired rows, so a
+    scope's live rows end by the horizon exactly when M, the latest end of
+    any of its rows already valid, lies in (now, horizon]: a row ending at M
+    is valid now when M > now, and no row valid now ends later.  The memo
+    keeps M per scope, the rows not yet valid when it was built, and the
+    highest rowid folded.  Each candidate is then read exactly off the
+    evidence index, so the scopes and their counts are the full scans'.
+    """
+
+    held = dict(memo or {})
+    latest: dict[str, str] = {}
+    pending: list[list[str]] = []
+
+    def _key(kind: Any, station: Any, system: Any, season: Any, lead: Any, set_hash: Any) -> str | None:
+        if kind == CROSS_KIND:
+            return "|".join(("C", str(station), str(season), str(lead)))
+        if kind == SYSTEM_KIND and str(set_hash) == "*":
+            return "|".join(("S", str(station), str(system), str(season), str(lead)))
+        return None
+
+    if held.get("schema") == STALLED_SCOPE_MEMO_SCHEMA:
+        latest = dict(held.get("latest") or {})
+        pending = [list(item) for item in held.get("pending") or []]
+        top = int(held.get("top_rowid") or 0)
+        rows = conn.execute(
+            f"SELECT artifact_kind,station_id,ensemble_system_id_or_star,season_bin,lead_bucket,"
+            f"available_system_set_hash_or_star,valid_from_utc,valid_until_utc,rowid FROM {ACTIVATION_TABLE} "
+            f"WHERE rowid>? AND authority_scope=? ORDER BY rowid",
+            (top, AUTHORITY),
+        ).fetchall()
+        for *fields, valid_from, valid_until, rowid in rows:
+            top = max(top, int(rowid))
+            key = _key(*fields)
+            if key is not None:
+                pending.append([key, str(valid_from), str(valid_until)])
+    else:
+        # First build: the live rows' latest end per scope, off the covering
+        # evidence index as the full scans read it, and the rows minted for
+        # later -- one snapshot with the highest rowid, so the next run's
+        # ``rowid >`` read starts exactly where this one stopped.
+        began = not conn.in_transaction
+        if began:
+            conn.execute("BEGIN")
+        try:
+            top = int(conn.execute(f"SELECT MAX(rowid) FROM {ACTIVATION_TABLE}").fetchone()[0] or 0)
+            for station, season, lead, until in conn.execute(
+                f"SELECT station_id,season_bin,lead_bucket,MAX(valid_until_utc) FROM {ACTIVATION_TABLE} "
+                f"INDEXED BY calibration_native_activation_evidence_idx "
+                f"WHERE artifact_kind=? AND authority_scope=? AND valid_from_utc<=? AND valid_until_utc>? "
+                f"GROUP BY station_id,season_bin,lead_bucket",
+                (CROSS_KIND, AUTHORITY, now_text, now_text),
+            ):
+                latest["|".join(("C", str(station), str(season), str(lead)))] = str(until)
+            for station, system, season, lead, until in conn.execute(
+                f"SELECT station_id,ensemble_system_id_or_star,season_bin,lead_bucket,MAX(valid_until_utc) "
+                f"FROM {ACTIVATION_TABLE} WHERE artifact_kind=? AND authority_scope=? "
+                f"AND available_system_set_hash_or_star='*' AND valid_from_utc<=? AND valid_until_utc>? "
+                f"GROUP BY station_id,ensemble_system_id_or_star,season_bin,lead_bucket",
+                (SYSTEM_KIND, AUTHORITY, now_text, now_text),
+            ):
+                latest["|".join(("S", str(station), str(system), str(season), str(lead)))] = str(until)
+            for *fields, valid_from, valid_until in conn.execute(
+                f"SELECT artifact_kind,station_id,ensemble_system_id_or_star,season_bin,lead_bucket,"
+                f"available_system_set_hash_or_star,valid_from_utc,valid_until_utc FROM {ACTIVATION_TABLE} "
+                f"INDEXED BY calibration_native_activation_evidence_idx "
+                f"WHERE authority_scope=? AND valid_from_utc>? AND artifact_kind IN (?,?)",
+                (AUTHORITY, now_text, CROSS_KIND, SYSTEM_KIND),
+            ):
+                key = _key(*fields)
+                if key is not None:
+                    pending.append([key, str(valid_from), str(valid_until)])
+        finally:
+            if began:
+                conn.execute("COMMIT")
+    # Fold every row valid by now; a row minted for later stays pending.
+    still: list[list[str]] = []
+    for key, valid_from, valid_until in pending:
+        if valid_from <= now_text:
+            if valid_until > latest.get(key, ""):
+                latest[key] = valid_until
+        else:
+            still.append([key, valid_from, valid_until])
+    candidates = sorted(
+        key for key, valid_until in latest.items() if now_text < valid_until <= horizon_text
+    )
+    cross: list[dict[str, Any]] = []
+    system: list[dict[str, Any]] = []
+    for key in candidates:
+        parts = key.split("|")
+        if parts[0] == "C":
+            _c, station, season, lead = parts
+            row = conn.execute(
+                f"SELECT MAX(valid_until_utc),COUNT(*) FROM {ACTIVATION_TABLE} "
+                f"INDEXED BY calibration_native_activation_evidence_idx "
+                f"WHERE station_id=? AND artifact_kind=? AND season_bin=? AND lead_bucket=? "
+                f"AND valid_until_utc>? AND authority_scope=? AND valid_from_utc<=?",
+                (station, CROSS_KIND, season, lead, now_text, AUTHORITY, now_text),
+            ).fetchone()
+            if row and row[1] and str(row[0]) <= horizon_text:
+                cross.append({
+                    "station_id": station, "season_bin": season, "lead_bucket": lead,
+                    "newest_valid_until_utc": str(row[0]), "live_activation_count": int(row[1]),
+                })
+        else:
+            _s, station, system_id, season, lead = parts
+            row = conn.execute(
+                f"SELECT MAX(valid_until_utc),COUNT(*) FROM {ACTIVATION_TABLE} "
+                f"INDEXED BY calibration_native_activation_evidence_idx "
+                f"WHERE station_id=? AND artifact_kind=? AND season_bin=? AND lead_bucket=? "
+                f"AND valid_until_utc>? AND authority_scope=? AND valid_from_utc<=? "
+                f"AND ensemble_system_id_or_star=? AND available_system_set_hash_or_star='*'",
+                (station, SYSTEM_KIND, season, lead, now_text, AUTHORITY, now_text, system_id),
+            ).fetchone()
+            if row and row[1] and str(row[0]) <= horizon_text:
+                system.append({
+                    "station_id": station, "ensemble_system_id": system_id, "season_bin": season,
+                    "lead_bucket": lead, "newest_valid_until_utc": str(row[0]),
+                    "live_activation_count": int(row[1]),
+                })
+    cross.sort(key=lambda r: (r["station_id"], r["season_bin"], r["lead_bucket"]))
+    system.sort(key=lambda r: (r["station_id"], r["ensemble_system_id"], r["season_bin"], r["lead_bucket"]))
+    # A scope whose latest end has passed holds nothing a later run needs
+    # unless a new row revives it, and that row arrives as new.
+    kept = {key: value for key, value in latest.items() if value > now_text}
+    return cross, system, {
+        "schema": STALLED_SCOPE_MEMO_SCHEMA, "top_rowid": top, "latest": kept, "pending": still,
+    }
+
+
 def _newest_cross_activation_per_pairing(
     conn: sqlite3.Connection,
     *,
@@ -935,6 +1080,7 @@ def _days(start: datetime, end_text: Any) -> float:
 
 def certificate_health(
     conn: sqlite3.Connection, *, now: datetime,
+    scope_memo: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Which scopes serve on renewed evidence, and which are about to end.
 
@@ -1028,9 +1174,18 @@ def certificate_health(
             )
         return labels_by_station[station_id]
 
-    for scope in stalled_cross_scopes(
-        conn, now_text=now_text, horizon_text=horizon_text,
-    ):
+    # ``scope_memo`` (the board's, in and out): find the stalled scopes off
+    # the rows added since it was built rather than every live one.
+    if scope_memo is not None:
+        cross_scopes, system_scopes, kept_memo = stalled_scopes_incremental(
+            conn, scope_memo, now_text=now_text, horizon_text=horizon_text,
+        )
+        scope_memo.clear()
+        scope_memo.update(kept_memo)
+    else:
+        cross_scopes = stalled_cross_scopes(conn, now_text=now_text, horizon_text=horizon_text)
+        system_scopes = stalled_system_scopes(conn, now_text=now_text, horizon_text=horizon_text)
+    for scope in cross_scopes:
         if _scope_skip_reason(
             station_id=scope["station_id"], season_bin=scope["season_bin"],
             lead_bucket=scope["lead_bucket"], system_ids=(),
@@ -1068,9 +1223,7 @@ def certificate_health(
                 _days(now, scope["newest_valid_until_utc"]), 2
             ),
         })
-    for scope in stalled_system_scopes(
-        conn, now_text=now_text, horizon_text=horizon_text,
-    ):
+    for scope in system_scopes:
         if _scope_skip_reason(
             station_id=scope["station_id"], season_bin=scope["season_bin"],
             lead_bucket=scope["lead_bucket"],
@@ -1150,6 +1303,7 @@ __all__ = [
     "renew_expiring_certificates",
     "served_labels",
     "stalled_cross_scopes",
+    "stalled_scopes_incremental",
     "stalled_system_scopes",
     "utc_text",
 ]

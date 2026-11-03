@@ -4915,10 +4915,21 @@ def collect_certificate_authority(conn: sqlite3.Connection) -> dict[str, Any]:
         certificate_health,
     )
 
+    # A paged run keeps the stalled-scope memo (user 2026-11-03 「前端所有都是
+    # 改为只读按日增量的部分」): each run folds only the activations minted
+    # since, instead of every live one (~850,000 cross rows).
+    memo = _load_closed_readings(RENDER_STALLED_SCOPE_MEMO) if _PAGED_RUN else None
     try:
-        return certificate_health(conn, now=_now())
+        health = certificate_health(conn, now=_now(), scope_memo=memo)
     except sqlite3.Error as exc:
         return {"available": False, "health": "amber", "note": f"读不出：{exc}"}
+    if memo is not None:
+        _save_closed_readings(RENDER_STALLED_SCOPE_MEMO, memo)
+    return health
+
+
+#: The certificate clock's stalled-scope memo (``stalled_scopes_incremental``).
+RENDER_STALLED_SCOPE_MEMO = "_stalled_scope_memo.json"
 
 
 def _live_ssot_guard() -> dict[str, Any]:
