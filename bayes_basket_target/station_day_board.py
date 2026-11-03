@@ -1292,6 +1292,8 @@ QUOTA_LANE = "station_day_board"
 # spent the board's 500 by 07:35Z and the live MOS card went blank).
 quota_lane: ContextVar[str] = ContextVar("station_day_board_quota_lane", default=QUOTA_LANE)
 _DAY_REFUSED_UNTIL: list[str] = []
+# A concurrency / per-minute refusal is asked again this many times in all.
+MINUTE_REFUSAL_ATTEMPTS = 3
 # Measured sunshine (user 2026-10-09「实况日照数据源是什么？感觉有点高了」): the
 # METAR-inferred figure read 483-807 W/m2 at ZUUU 10-09 10-13h against a
 # satellite 83-254 -- the report sees only low cloud, and haze and the
@@ -1738,30 +1740,57 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str, *, force: bool
         context = ssl.create_default_context(cafile=certifi.where())
     except ImportError:
         context = ssl.create_default_context()
-    try:
-        with urlopen(Request(f"{OPEN_METEO_PREVIOUS_RUNS}?{query}",
-                             headers={"User-Agent": "weather-board-station-day"}),
-                     timeout=20, context=context) as resp:  # noqa: S310 -- fixed https host
-            data = json.loads(resp.read().decode("utf-8"))
-        out = {"available": "hourly" in data, "hourly": data.get("hourly") or {},
-               "fetched_at_utc": _iso(datetime.now(timezone.utc))}
-    except HTTPError as exc:
+    # A per-minute / concurrency refusal is the shared egress being busy for a
+    # few seconds (2026-11-03 「预报读不到（HTTPError 429: Too many concurrent
+    # requests）」 while a single request a minute later answered 200): waited
+    # out with the relay's pauses, each retry charged like any request.
+    for attempt in range(MINUTE_REFUSAL_ATTEMPTS):
         try:
-            body = exc.read().decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001 -- the status line still says something
-            body = ""
-        if quota.classify(body, exc.code) == "day":
-            now = datetime.now(timezone.utc)
-            midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            # Asked again after one cache period at most: if the aggregator's
-            # day does not turn at 00:00Z the panel is dark for half an hour,
-            # not a day.
-            _DAY_REFUSED_UNTIL[:] = [min(midnight, now + timedelta(seconds=FORECAST_CACHE_SECONDS)).isoformat()]
-            out = {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
-        else:
-            out = {"available": False, "reason": f"HTTPError {exc.code}: {(body or str(exc))[:120]}"}
-    except Exception as exc:  # noqa: BLE001 -- the timeline says why it is empty
-        out = {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+            with urlopen(Request(f"{OPEN_METEO_PREVIOUS_RUNS}?{query}",
+                                 headers={"User-Agent": "weather-board-station-day"}),
+                         timeout=20, context=context) as resp:  # noqa: S310 -- fixed https host
+                data = json.loads(resp.read().decode("utf-8"))
+            out = {"available": "hourly" in data, "hourly": data.get("hourly") or {},
+                   "fetched_at_utc": _iso(datetime.now(timezone.utc))}
+        except HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001 -- the status line still says something
+                body = ""
+            kind = quota.classify(body, exc.code)
+            if kind == "day":
+                now = datetime.now(timezone.utc)
+                midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                # Asked again after one cache period at most: if the aggregator's
+                # day does not turn at 00:00Z the panel is dark for half an hour,
+                # not a day.
+                _DAY_REFUSED_UNTIL[:] = [min(midnight, now + timedelta(seconds=FORECAST_CACHE_SECONDS)).isoformat()]
+                out = {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
+            else:
+                out = {"available": False, "reason": f"HTTPError {exc.code}: {(body or str(exc))[:120]}"}
+                if kind == "minute" and attempt + 1 < MINUTE_REFUSAL_ATTEMPTS:
+                    try:
+                        quota.charge(quota_lane.get(), 1)
+                    except quota.QuotaRefused:
+                        break
+                    quota.throttle_pause(attempt)
+                    continue
+        except Exception as exc:  # noqa: BLE001 -- the timeline says why it is empty
+            out = {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+        break
+    if not out.get("available") and not force:
+        # Still refused: the last run this process or the hourly pull read, dated
+        # by its own fetched_at_utc (the panel prints 取于), rather than a blank panel.
+        # Not for the hourly pull, whose history line must be a pull of its own.
+        last = hit[1] if hit else None
+        try:
+            disk = json.loads(_best_match_snapshot(key).read_text(encoding="utf-8"))
+            if disk.get("available") and not (last and str(last.get("fetched_at_utc") or "") >= str(disk.get("fetched_at_utc") or "")):
+                last = disk
+        except (OSError, ValueError, TypeError):
+            pass
+        if last and last.get("available"):
+            return {**last, "reason": f"本次未取到（{out.get('reason')}），显示上一次的预报"}
     if out.get("available"):
         _FORECAST_CACHE[key] = (time.monotonic(), out)
         try:

@@ -77,14 +77,69 @@ def test_a_daily_refusal_is_held_in_process_and_not_marked_for_production(ledger
 
 
 def test_a_minute_refusal_says_what_the_aggregator_said(ledger, monkeypatch) -> None:
+    calls: list[str] = []
+
     def _refuse(request, **_k):
+        calls.append(request.full_url)
         raise HTTPError(request.full_url, 429, "Too Many Requests", {},
                         io.BytesIO(b'{"error":true,"reason":"Minutely API request limit exceeded."}'))
 
     monkeypatch.setattr(urllib.request, "urlopen", _refuse)
+    monkeypatch.setattr(Q, "throttle_pause", lambda _attempt: None)
     out = B._open_meteo_hourly(30.58, 103.95, "Asia/Shanghai", "2026-10-12")
     assert out["available"] is False and "Minutely API request limit" in out["reason"]
     assert B._DAY_REFUSED_UNTIL == []
+    assert len(calls) == B.MINUTE_REFUSAL_ATTEMPTS
+    assert Q.spent(B.QUOTA_LANE, path=ledger) == B.MINUTE_REFUSAL_ATTEMPTS
+
+
+class _Resp(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+_CONCURRENT = b'{"reason":"Too many concurrent requests","error":true}'
+
+
+def test_a_concurrency_refusal_is_waited_out(ledger, monkeypatch) -> None:
+    # 2026-11-03 「逐小时实况对预报：预报读不到（HTTPError 429: Too many concurrent requests）」.
+    answers = iter([HTTPError("u", 429, "Too Many Requests", {}, io.BytesIO(_CONCURRENT)),
+                    _Resp(json.dumps({"hourly": {"time": ["t"]}}).encode())])
+
+    def _open(_req, **_k):
+        a = next(answers)
+        if isinstance(a, Exception):
+            raise a
+        return a
+
+    paused: list[int] = []
+    monkeypatch.setattr(urllib.request, "urlopen", _open)
+    monkeypatch.setattr(Q, "throttle_pause", paused.append)
+    out = B._open_meteo_hourly(30.58, 103.95, "Asia/Shanghai", "2026-10-12")
+    assert out["available"] is True and paused == [0]
+    assert Q.spent(B.QUOTA_LANE, path=ledger) == 2
+
+
+def test_a_refusal_that_persists_shows_the_last_run_dated(ledger, monkeypatch) -> None:
+    key = ("30.580,103.950", "2026-10-12")
+    B.BEST_MATCH_DIR.mkdir(parents=True)
+    old = {"available": True, "hourly": {"time": ["t"]}, "fetched_at_utc": "2026-10-12T01:00:00Z"}
+    B._best_match_snapshot(key).write_text(json.dumps(old), encoding="utf-8")
+
+    def _refuse(request, **_k):
+        raise HTTPError(request.full_url, 429, "Too Many Requests", {}, io.BytesIO(_CONCURRENT))
+
+    monkeypatch.setattr(urllib.request, "urlopen", _refuse)
+    monkeypatch.setattr(Q, "throttle_pause", lambda _attempt: None)
+    out = B._open_meteo_hourly(30.58, 103.95, "Asia/Shanghai", "2026-10-12")
+    assert out["available"] is True and out["fetched_at_utc"] == old["fetched_at_utc"]
+    assert "Too many concurrent" in out["reason"]
+    # The hourly pull never passes an old run off as its own pull.
+    forced = B._open_meteo_hourly(30.58, 103.95, "Asia/Shanghai", "2026-10-12", force=True)
+    assert forced["available"] is False
 
 
 def test_the_panel_asks_for_soil_temperature_and_the_board_shows_it(ledger, monkeypatch) -> None:
