@@ -5,6 +5,12 @@
       "name": "dashboard-static",
       "url": "http://localhost:8791",
       "port": 8791
+    },
+    {
+      "name": "station-board-site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8793", "--bind", "127.0.0.1", "--directory", "data/station_board_site"],
+      "port": 8793
     }
   ]
 }
