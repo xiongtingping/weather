@@ -5152,7 +5152,7 @@ def _skill_day_memo_salt() -> str:
     aggregate the GROUP BY computes."""
 
     return hashlib.sha256(json.dumps(
-        ["skill_day_memo_v1", [list(row) for row in MEMBER_FAMILIES]], default=str,
+        ["skill_day_memo_v2_sums", [list(row) for row in MEMBER_FAMILIES]], default=str,
     ).encode("utf-8")).hexdigest()
 
 
@@ -5243,79 +5243,71 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
     family_parameters: list[Any] = []
     for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
         family_parameters.extend((system_id, transport))
-    # A settled target day is aggregated once (user 2026-10-20 「为什么要全量
-    # 读历史」 / 「改」): the 60-day GROUP BY walked millions of member index
-    # entries every three and a half hours (43 s of a 59 s build on a quiet
-    # machine, 446 s swapping).  A paged run keeps each closed day's run
-    # rows (``RENDER_CLOSED_SKILL_DAYS``) with the table's highest rowid at
-    # the time; the member table only grows (cold offload takes days past
-    # its 90-day hot window, outside this 60), so the days any later row
-    # landed on are found by a rowid range and read again with the rest.
+    # Each target day's run groups are kept as sums (user 2026-10-20 「为什么要
+    # 全量读历史」, and 2026-11-03 「前端所有都是改为只读按日增量的部分」): the
+    # 60-day GROUP BY walked millions of member rows every three and a half
+    # hours, and until 11-03 every day past the closed line -- the forecasts
+    # still arriving, the heaviest days -- was re-aggregated whole each run.
+    # The member table only grows (cold offload takes days past its 90-day
+    # hot window, outside this 60), so a paged run keeps every day's groups
+    # as (sum, sum of squares, count) with the highest rowid folded, and
+    # aggregates only the rows past it into them.  The mean and mean square
+    # are formed from the sums the same way on every path, rounded to 1e-9,
+    # so the order the sums were added in does not show.
     top_rowid = int(conn.execute(
         "SELECT COALESCE(MAX(rowid), 0) FROM calibration_native_ensemble_historical_member_run"
     ).fetchone()[0])
     memo_salt = _skill_day_memo_salt()
     memo = _load_closed_readings(RENDER_CLOSED_SKILL_DAYS) if _PAGED_RUN else {}
-    kept: dict[str, Any] = (
-        dict(memo["days"])
-        if memo.get("salt") == memo_salt and isinstance(memo.get("days"), dict)
+    held = (
+        memo.get("salt") == memo_salt and isinstance(memo.get("days"), dict)
         and isinstance(memo.get("top_rowid"), int) and memo["top_rowid"] <= top_rowid
-        else {}
     )
-    if kept:
-        touched = {
-            str(day) for (day,) in conn.execute(
-                "SELECT DISTINCT target_local_date"
-                " FROM calibration_native_ensemble_historical_member_run"
-                " WHERE rowid > ? AND rowid <= ?",
-                (int(memo["top_rowid"]), top_rowid),
-            )
-        }
-        kept = {day: rows for day, rows in kept.items() if day not in touched and day >= window_start}
-    runs: list[Any] = [tuple(row) for day in sorted(kept) for row in kept[day]]
-    closed_through = (_now().date() - timedelta(days=STATION_DAY_CLOSED_DAYS)).isoformat()
     select = (
         "SELECT ensemble_system_id, station_id, target_local_date,"
         " native_run_init_utc, run_cycle, archive_lead_bucket,"
-        " AVG(raw_tmax_c), AVG(raw_tmax_c*raw_tmax_c), COUNT(*)"
+        " SUM(raw_tmax_c), SUM(raw_tmax_c*raw_tmax_c), COUNT(*)"
         " FROM calibration_native_ensemble_historical_member_run"
         " WHERE qc_status='ACCEPTED' AND native_run_init_utc IS NOT NULL"
     )
-    # Seeks, both: the closed days not kept by name, and everything past the
-    # closed line by range -- a NOT IN beside the range would walk it all.
-    window_floor = date.fromisoformat(window_start)
-    closed_line = date.fromisoformat(closed_through)
-    closed_unkept = [
-        day for day in (
-            (window_floor + timedelta(days=offset)).isoformat()
-            for offset in range(max(0, (closed_line - window_floor).days + 1))
-        )
-        if day not in kept
-    ]
-    fresh: list[Any] = []
-    if closed_unkept:
-        fresh.extend(conn.execute(
-            select
-            + f" AND target_local_date IN ({','.join('?' for _ in closed_unkept)})"
+    groups: dict[tuple[Any, ...], list[float]] = {}
+
+    def _fold(rows: Sequence[Sequence[Any]]) -> None:
+        for row in rows:
+            if str(row[2]) < window_start:
+                continue
+            slot = groups.setdefault(tuple(row[:6]), [0.0, 0.0, 0])
+            slot[0] += float(row[6] or 0.0)
+            slot[1] += float(row[7] or 0.0)
+            slot[2] += int(row[8] or 0)
+
+    if held:
+        for day, rows in memo["days"].items():
+            if day >= window_start:
+                _fold(rows)
+        _fold(conn.execute(
+            select + " AND rowid > ? AND rowid <= ?"
             + f" AND ({conditions}) GROUP BY 1,2,3,4,5,6",
-            [*closed_unkept, *family_parameters],
+            [int(memo["top_rowid"]), top_rowid, *family_parameters],
         ).fetchall())
-    fresh.extend(conn.execute(
-        select + " AND target_local_date > ? AND target_local_date >= ?"
-        + f" AND ({conditions}) GROUP BY 1,2,3,4,5,6",
-        [closed_through, window_start, *family_parameters],
-    ).fetchall())
-    runs.extend(fresh)
+    else:
+        _fold(conn.execute(
+            select + " AND target_local_date >= ? AND rowid <= ?"
+            + f" AND ({conditions}) GROUP BY 1,2,3,4,5,6",
+            [window_start, top_rowid, *family_parameters],
+        ).fetchall())
     if _PAGED_RUN:
-        newly: dict[str, list[list[Any]]] = defaultdict(list)
-        for row in fresh:
-            if str(row[2]) <= closed_through:
-                newly[str(row[2])].append(list(row))
-        if newly or set(memo.get("days") or {}) != set(kept):
-            _save_closed_readings(RENDER_CLOSED_SKILL_DAYS, {
-                "salt": memo_salt, "top_rowid": top_rowid,
-                "days": {**{day: [list(row) for row in rows] for day, rows in kept.items()}, **newly},
-            })
+        by_day: dict[str, list[list[Any]]] = defaultdict(list)
+        for key, (total, square, count) in groups.items():
+            by_day[str(key[2])].append([*key, total, square, count])
+        _save_closed_readings(RENDER_CLOSED_SKILL_DAYS, {
+            "salt": memo_salt, "top_rowid": top_rowid, "days": dict(by_day),
+        })
+    runs: list[Any] = [
+        (*key, round(total / count, 9), round(square / count, 9), count)
+        for key, (total, square, count) in sorted(groups.items(), key=lambda item: tuple(map(str, item[0])))
+        if count
+    ]
 
     def blank() -> dict[str, Any]:
         return {

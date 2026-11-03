@@ -244,7 +244,14 @@ def test_skill_kept_days_read_back_and_a_backfilled_day_is_read_again(paged, mon
     monkeypatch.setitem(C._PAGED_RUN, "probe", True)
     assert C.collect_model_skill(conn) == full
     assert json.loads((paged / C.RENDER_CLOSED_SKILL_DAYS).read_text())["days"]
+    # Every day is held, open ones too (user 2026-11-03 「前端所有都是改为只读按日
+    # 增量的部分」): a run reads only the member rows past the held rowid.
+    reads: list[str] = []
+    conn.set_trace_callback(reads.append)
     assert C.collect_model_skill(conn) == full
+    conn.set_trace_callback(None)
+    member_reads = [sql for sql in reads if "SUM(raw_tmax_c)" in sql]
+    assert len(member_reads) == 1 and "rowid >" in member_reads[0], member_reads
     system, _label, transport, _backfillable = C.MEMBER_FAMILIES[0]
     day = (TODAY - timedelta(days=12)).isoformat()
     init = datetime.combine(TODAY - timedelta(days=13), datetime.min.time(), timezone.utc)
