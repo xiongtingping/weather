@@ -24205,7 +24205,7 @@ function sdModels(day){
     return `<tr${m.dropped ? ' style="opacity:.6"' : ""}><td><b>${sdEsc(m.system_id)}</b>${tag}<div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
       <td class="mono"><div title="${sdEsc(`这一轮：起报时次与起报的当地时间${newRun ? `；上期 ${sdLocal(pv.run_init_utc, true)}` : ""}`)}">${sdEsc(m.run_cycle || "—")} ${sdLocal(m.run_init_utc, true)}${newRun ? ' <span class="pill">新 run</span>' : ""}</div>${nextRun(m.system_id)}</td>
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
-      <td title="${sdEsc(served ? `分布回归的家族权重（宪章 281，每日拟合），在入座家族里归一；旧链权重 ${sdPc(m.weight)} 只在回退时用。旧链：${weightWhy}` : weightWhy)}"><div class="sd-wbar"><i style="width:${(100 * (shownW(m) || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(shownW(m))}</span>${served ? "" : pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}${served ? `<div class="muted sd-sub">旧链 ${sdPc(m.weight)}${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}</div>` : ""}</td>
+      <td title="${sdEsc(served ? "分布回归的家族权重（宪章 281，每日拟合），在入座家族里归一" : weightWhy)}"><div class="sd-wbar"><i style="width:${(100 * (shownW(m) || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(shownW(m))}</span>${served ? "" : pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
       <td class="mono"><b>${sdN(m.calibrated_centre_c, 2)}°C</b>${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
       <td class="mono">${runSteps(m.system_id)}</td>
       <td class="sd-raw-c sd-gl">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span><div class="muted sd-sub">${raw.members} 成员</div>` : "—"}</td>
@@ -24216,10 +24216,10 @@ function sdModels(day){
   const changed = models.filter(m => m.dropped || !m.prev || (m.prev.run_init_utc !== m.run_init_utc)
     || Math.abs((m.weight || 0) - (m.prev.weight || 0)) >= 0.0005).length;
   const vsPrev = p0.previous_decided_at_utc
-    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}${served ? "在服务的分布回归用它自己的家族权重（每日拟合才变）；" : ""}${changed ? `${served ? "旧链" : ""}权重变化原因：${sdEsc(weightWhy)}。` : ""}</div>` : "";
+    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}${served ? "权重是分布回归的家族权重，每日拟合才变。" : changed ? `权重变化原因：${sdEsc(weightWhy)}。` : ""}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
     ${vsPrev}
-    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2" title="起报时次与当地时间；下一轮按本站日内节奏推算（起报与被 P0 用上的当地时间）">run（起报，当地）<div class="muted sd-sub">下一轮</div></th><th rowspan="2">校准提前量</th><th rowspan="2" title="分布回归在服务时：它的家族权重（宪章 281）；下面小字是旧链（站点混合，宪章 199/242）的权重，只在回退时用">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2" title="起报时次与当地时间；下一轮按本站日内节奏推算（起报与被 P0 用上的当地时间）">run（起报，当地）<div class="muted sd-sub">下一轮</div></th><th rowspan="2">校准提前量</th><th rowspan="2" title="分布回归在服务时：它的家族权重（宪章 281）；回退时是站点混合（宪章 199/242）的权重">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th rowspan="2" title="每一轮的校准中心减这家上一轮的，新的在上（粗体＝最新一轮）">每轮增量</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
       <tr><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${sdNgrDetTable(day, G)}
     <div class="muted sd-sub">P0 模型加权温度中心 ${sdN(p0.model_center_c, 2)}°C（各模型校准中心的加权值） · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
