@@ -68,7 +68,7 @@ def _member_conn() -> sqlite3.Connection:
 def test_recent_runs_carry_per_day_stations_and_the_first_arrival(monkeypatch) -> None:
     monkeypatch.setattr(cd, "_now", lambda: NOW)
     plan = _member_conn().execute(
-        "EXPLAIN QUERY PLAN " + cd.RECENT_RUNS_SQL, (ICON, ICON_T, "x", "y")
+        "EXPLAIN QUERY PLAN " + cd.RECENT_RUN_STATIONS_SQL, (ICON, ICON_T, "x", "y", 0)
     ).fetchall()
     assert "COVERING INDEX calibration_native_member_skill_idx" in str(plan)
     out = cd.collect_recent_runs(_member_conn())
@@ -147,3 +147,19 @@ def test_both_reads_are_every_run_and_the_matrix_is_on_the_head() -> None:
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert "function modelRunHealth()" in page
     assert 'card(modelRunHealth, "模型 run 采集")' in page
+
+
+def test_recent_runs_kept_between_paged_runs_read_only_new_rows(monkeypatch, tmp_path) -> None:
+    # User 2026-11-03 「前端所有都是改为只读按日增量的部分」.
+    monkeypatch.setattr(cd, "_now", lambda: NOW)
+    monkeypatch.setattr(cd, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setitem(cd._PAGED_RUN, "probe", True)
+    conn = _member_conn()
+    full = cd.collect_recent_runs(conn)
+    reads: list[str] = []
+    conn.set_trace_callback(reads.append)
+    again = cd.collect_recent_runs(conn)
+    conn.set_trace_callback(None)
+    assert again == full
+    assert not any("GROUP BY native_run_init_utc" in sql for sql in reads), reads
+    monkeypatch.delitem(cd._PAGED_RUN, "probe")

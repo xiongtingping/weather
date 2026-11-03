@@ -1572,16 +1572,78 @@ RECENT_RUNS_WINDOW_HOURS = 36
 #: the run's arrival for that day and the last row's is its newest top-up.
 #: A covering range on ``calibration_native_member_skill_idx`` (1.7 s for six
 #: families on 2026-10-01); only the two rowids per group are looked up.
-RECENT_RUNS_SQL = (
-    "SELECT native_run_init_utc, target_local_date,"
-    " COUNT(DISTINCT station_id), MIN(rowid), MAX(rowid)"
+#: The recent runs' groups kept between paged runs (``_recent_run_groups``).
+RECENT_RUN_GROUPS_FILE = "_recent_run_groups.json"
+#: A first read, per family: each (run, target day, station) with its first
+#: and last rowid, as of ``top``.
+RECENT_RUN_STATIONS_SQL = (
+    "SELECT native_run_init_utc, target_local_date, station_id, MIN(rowid), MAX(rowid)"
     " FROM calibration_native_ensemble_historical_member_run"
     " INDEXED BY calibration_native_member_skill_idx"
     " WHERE ensemble_system_id=? AND transport_provider_id=?"
     " AND qc_status IN ('ACCEPTED','QUARANTINED')"
-    " AND target_local_date>=? AND native_run_init_utc>=?"
-    " GROUP BY native_run_init_utc, target_local_date"
+    " AND target_local_date>=? AND native_run_init_utc>=? AND rowid<=?"
+    " GROUP BY native_run_init_utc, target_local_date, station_id"
 )
+
+
+def _recent_run_groups(
+    conn: sqlite3.Connection, since_day: str, since_run: str,
+) -> dict[tuple[str, str, str], tuple[set[str], int, int]]:
+    """Each family's (run, target day): its stations and first/last rowid.
+
+    User 2026-11-03 「前端所有都是改为只读按日增量的部分」: every half hour the
+    36-hour GROUP BY re-read every member row of every recent run (14 s
+    warm, 355 s under load).  The member table only grows, so a paged run
+    keeps the groups with the highest rowid folded and reads only the rows
+    past it; a group leaves once its run or day falls out of the window.
+    """
+
+    families = {(system_id, transport) for system_id, _l, transport, _b in MEMBER_FAMILIES}
+    salt = hashlib.sha256(json.dumps(sorted(families)).encode("utf-8")).hexdigest()
+    top = int(conn.execute(
+        "SELECT COALESCE(MAX(rowid), 0) FROM calibration_native_ensemble_historical_member_run"
+    ).fetchone()[0])
+    memo = _load_closed_readings(RECENT_RUN_GROUPS_FILE) if _PAGED_RUN else {}
+    groups: dict[tuple[str, str, str], list[Any]] = {}
+
+    def _fold(system_id: str, run: Any, day: Any, station: Any, first: int, last: int) -> None:
+        slot = groups.setdefault((system_id, str(run), str(day)), [set(), first, last])
+        slot[0].add(str(station))
+        slot[1] = min(slot[1], first)
+        slot[2] = max(slot[2], last)
+
+    if (
+        memo.get("salt") == salt and isinstance(memo.get("top_rowid"), int)
+        and memo["top_rowid"] <= top and isinstance(memo.get("groups"), list)
+    ):
+        for system_id, run, day, stations, first, last in memo["groups"]:
+            groups[(system_id, run, day)] = [set(stations), int(first), int(last)]
+        for system_id, transport, run, day, station, rowid in conn.execute(
+            "SELECT ensemble_system_id, transport_provider_id, native_run_init_utc,"
+            " target_local_date, station_id, rowid"
+            " FROM calibration_native_ensemble_historical_member_run"
+            " WHERE rowid>? AND rowid<=? AND qc_status IN ('ACCEPTED','QUARANTINED')",
+            (int(memo["top_rowid"]), top),
+        ):
+            if (str(system_id), str(transport)) in families and run is not None:
+                _fold(str(system_id), run, day, station, int(rowid), int(rowid))
+    else:
+        for system_id, transport in sorted(families):
+            for run, day, station, first, last in conn.execute(
+                RECENT_RUN_STATIONS_SQL, (system_id, transport, since_day, since_run, top)
+            ):
+                _fold(system_id, run, day, station, int(first), int(last))
+    kept = {
+        key: slot for key, slot in groups.items()
+        if key[2] >= since_day and key[1] >= since_run
+    }
+    if _PAGED_RUN:
+        _save_closed_readings(RECENT_RUN_GROUPS_FILE, {
+            "salt": salt, "top_rowid": top,
+            "groups": [[*key, sorted(slot[0]), slot[1], slot[2]] for key, slot in sorted(kept.items())],
+        })
+    return {key: (slot[0], int(slot[1]), int(slot[2])) for key, slot in kept.items()}
 
 
 def collect_recent_runs(
@@ -1600,19 +1662,18 @@ def collect_recent_runs(
     since = _now() - timedelta(hours=window_hours)
     since_run = since.strftime("%Y-%m-%dT%H:%M:%SZ")
     since_day = since.date().isoformat()
-    grouped: dict[str, dict[str, dict[str, Any]]] = {}
+    grouped: dict[str, dict[str, dict[str, Any]]] = {
+        system_id: {} for system_id, _l, _t, _b in MEMBER_FAMILIES
+    }
     rowids: list[int] = []
-    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
-        runs: dict[str, dict[str, Any]] = {}
-        for run, day, stations, first_id, last_id in conn.execute(
-            RECENT_RUNS_SQL, (system_id, transport, since_day, since_run)
-        ):
-            entry = runs.setdefault(str(run), {"days": {}, "first": [], "last": []})
-            entry["days"][str(day)] = int(stations)
-            entry["first"].append(int(first_id))
-            entry["last"].append(int(last_id))
-            rowids.extend((int(first_id), int(last_id)))
-        grouped[system_id] = runs
+    for (system_id, run, day), (stations, first_id, last_id) in sorted(
+        _recent_run_groups(conn, since_day, since_run).items()
+    ):
+        entry = grouped[system_id].setdefault(run, {"days": {}, "first": [], "last": []})
+        entry["days"][day] = len(stations)
+        entry["first"].append(first_id)
+        entry["last"].append(last_id)
+        rowids.extend((first_id, last_id))
     query_at: dict[int, str] = {}
     for start in range(0, len(rowids), 500):
         chunk = rowids[start:start + 500]
