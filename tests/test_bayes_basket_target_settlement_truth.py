@@ -1181,7 +1181,7 @@ def test_a_first_settlement_still_needs_the_registry() -> None:
         source, observation_id="a", valid_at="2026-07-28T03:00:00Z",
         temperature_c=30,
     )
-    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+    with pytest.raises(ContractError, match="registry_scope_missing"):
         materialize_settled_station_truth(
             target, source, station_id="RKPK", event_date="2026-07-28",
             as_of_utc="2026-07-29T10:00:00Z",
@@ -1196,7 +1196,7 @@ def test_a_registry_that_still_speaks_for_the_scope_keeps_its_refusal() -> None:
         ("RKPK", "2026-07-28", "Asia/Seoul", "awc", 0, "e" * 64,
          "2026-07-28T20:00:00Z"),
     )
-    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+    with pytest.raises(ContractError, match="registry_scope_missing"):
         materialize_settled_station_truth(
             target, source, station_id="RKPK", event_date="2026-07-28",
             as_of_utc="2026-07-29T10:00:00Z",
@@ -2315,7 +2315,7 @@ def test_a_prelisting_allowance_ends_where_it_says(tmp_path, monkeypatch) -> Non
     source = _canonical()
     _observation(source, observation_id="a", valid_at="2026-07-28T03:00:00Z", temperature_c=30)
     _warm_afternoon(source)
-    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+    with pytest.raises(ContractError, match="registry_scope_missing"):
         materialize_settled_station_truth(
             target, source, station_id="RKPK", event_date="2026-07-28",
             as_of_utc="2026-07-29T10:00:00Z",
@@ -2339,3 +2339,12 @@ def test_a_registry_row_outranks_the_prelisting_allowance(tmp_path, monkeypatch)
     ).fetchone()
     assert row[0] == "Asia/Seoul"
     assert json.loads(row[1])["registry_snapshot_sha256"] == "f" * 64
+
+
+def test_a_scope_the_registry_no_longer_names_lets_the_batch_advance() -> None:
+    # User 2026-11-03 「先查标签车道」: absent registry rows (retention keeps a
+    # day's own rows 45 days) are availability, not a contradiction; two
+    # scopes on one snapshot still are.
+    from bayes_basket_target.settlement_truth import blocker_class
+    assert blocker_class("ContractError:settlement_truth_registry_scope_missing") == "AVAILABILITY"
+    assert blocker_class("ContractError:settlement_truth_registry_scope_not_unique") == "CONSISTENCY"

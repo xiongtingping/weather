@@ -342,7 +342,7 @@ def _registry_scope_from_rows(
     rows: Sequence[Any], *, event_date: str,
 ) -> tuple[str, str, str]:
     if not rows:
-        raise ContractError("settlement_truth_registry_scope_not_unique")
+        raise ContractError("settlement_truth_registry_scope_missing")
     registry_snapshot_sha = str(rows[0][0] or "").strip().lower()
     latest_rows = [
         row for row in rows
@@ -1072,6 +1072,16 @@ AVAILABILITY_BLOCKER_REASONS = frozenset({
     # endpoint answers 400 for that date now.  Refusing is right; stopping the
     # batch over it is not.
     "settlement_truth_formal_source_lane_must_be_awc",
+    # No eligible registry row names the station-day at all -- registry
+    # retention keeps a day's own rows for REPLAY_RETENTION_DAYS (45), so a
+    # day that never settled loses them and can no longer be settled by this
+    # writer.  Absent, not contradictory: it used to share the not-unique
+    # code, and FACT 2026-07-31 and WSSS 2026-08-01 (facts at rowid 723-1107,
+    # registry rows gone) then stopped every batch that reached them.  The
+    # 2026-11-02 06:25Z restart reset the truth cursor to the oldest facts,
+    # so every truth pass after it stopped there and no training label was
+    # written for 21 hours (user 2026-11-03 「先查标签车道」).
+    "settlement_truth_registry_scope_missing",
 })
 
 
