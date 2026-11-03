@@ -1198,3 +1198,21 @@ def test_one_slow_run_does_not_starve_the_next(paged) -> None:
     saved = json.loads(path.read_text())
     assert saved["chain"] == [22.0, 21.0, 23.0, 648.0, 19.0]
     assert C._PAGED_RUN["every_run_costs"]["chain"] == 22.0
+
+
+def test_a_live_book_section_whose_inputs_did_not_move_reads_nothing(paged) -> None:
+    # User 2026-11-03 「我都没开启实盘为什么还要读？」: with the book, its fills,
+    # the labels and the control files where they were, the last value stands.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_target_order_intents(order_intent_id TEXT)")
+    calls: list[str] = []
+    first = C._cached_section("live_money", _collector(calls), conn)
+    C._SECTION_CACHE_LOG.clear()
+    second = C._cached_section("live_money", _collector(calls), conn)
+    assert calls == ["v"] and second == first
+    assert C._SECTION_CACHE_LOG["live_money"]["reused"] is True
+    assert C._SECTION_CACHE_LOG["live_money"]["inputs_unchanged_since"]
+    # A new intent is a new book.
+    conn.execute("INSERT INTO basket_target_order_intents VALUES('a')")
+    C._cached_section("live_money", _collector(calls), conn)
+    assert calls == ["v", "v"]

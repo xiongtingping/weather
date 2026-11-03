@@ -14451,18 +14451,25 @@ def _every_run_last_path(name: str, collector: Any) -> Path:
     return SECTION_CACHE_DIR / EVERY_RUN_LAST_DIR_NAME / f"{name}.{fingerprint}.json"
 
 
-def _save_every_run_last(name: str, collector: Any, value: Any) -> None:
-    """Keep an every-run section's value for a run that hits the deadline."""
+def _save_every_run_last(
+    name: str, collector: Any, value: Any, *, state_key: str | None = None,
+    unchanged_since: str | None = None,
+) -> None:
+    """Keep an every-run section's value for a run that hits the deadline,
+    and for one whose inputs have not moved (``EVERY_RUN_STATE_KEYS``)."""
 
     path = _every_run_last_path(name, collector)
+    now_text = _now().isoformat().replace("+00:00", "Z")
     try:
         text = json.dumps(
             {
                 "schema": "dashboard_every_run_last_v1",
                 "section": name,
                 "code_fingerprint": _section_fingerprint(collector, ""),
-                "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
+                "computed_at_utc": now_text,
                 "value": value,
+                **({"state_key": state_key, "inputs_unchanged_since": unchanged_since or now_text}
+                   if state_key else {}),
             },
             ensure_ascii=False,
         )
@@ -14475,6 +14482,70 @@ def _save_every_run_last(name: str, collector: Any, value: Any) -> None:
                 older.unlink(missing_ok=True)
     except (OSError, TypeError, ValueError):
         pass
+
+
+#: The inputs a live-book section reads, as one cheap key (user 2026-11-03
+#: 「我都没开启实盘为什么还要读？」): the order book, its fills, the settled
+#: labels and truth only grow, and the control files are the trading
+#: directory.  While none moved -- with live off, for days -- the last value
+#: is the value, and the run reads nothing else.
+LIVE_BOOK_STATE_TABLES = (
+    "basket_target_order_intents",
+    "basket_target_order_events",
+    "basket_target_order_reconciliations",
+    "basket_station_day_settlement_label",
+    "calibration_station_daily_high_truth",
+)
+
+
+def _live_book_state_key(conn: sqlite3.Connection, *args: Any) -> str | None:
+    if not isinstance(conn, sqlite3.Connection):
+        return None
+    parts: list[Any] = []
+    for table in LIVE_BOOK_STATE_TABLES:
+        if _table_exists(conn, table):
+            parts.append([table, conn.execute(f'SELECT MAX(rowid) FROM "{table}"').fetchone()[0]])
+    for path in sorted((ROOT / "config" / "trading").glob("*.json")):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        parts.append([path.name, stat.st_mtime_ns, stat.st_size])
+    # The other sections handed in (live_readiness reads station_difficulty),
+    # and the ET day the daily rows are cut on.
+    parts.append(json.dumps(args, sort_keys=True, default=str))
+    parts.append(_now().astimezone(ZoneInfo("America/New_York")).date().isoformat())
+    return hashlib.sha256(json.dumps(parts, default=str).encode("utf-8")).hexdigest()
+
+
+#: Every-run sections that are served from their last value while their
+#: inputs' key is unchanged (``_cached_section_value``).
+EVERY_RUN_STATE_KEYS = {
+    "live_readiness": _live_book_state_key,
+    "live_days": _live_book_state_key,
+    "live_money": _live_book_state_key,
+}
+
+
+def _every_run_unchanged(name: str, collector: Any, key: str) -> tuple[bool, Any]:
+    """The last value when it was computed under ``key``, re-stamped now:
+    its inputs have not moved, so it is current, not stale."""
+
+    path = _every_run_last_path(name, collector)
+    try:
+        blob = json.loads(path.read_text(encoding="utf-8"))
+        if blob.get("code_fingerprint") != _section_fingerprint(collector, "") or blob.get("state_key") != key:
+            return False, None
+        value = blob["value"]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False, None
+    unchanged_since = str(blob.get("inputs_unchanged_since") or blob.get("computed_at_utc") or "")
+    _save_every_run_last(name, collector, value, state_key=key, unchanged_since=unchanged_since)
+    _SECTION_CACHE_LOG[name] = {
+        "build_sec": 0.0, "reused": True, "cached": True,
+        "inputs_unchanged_since": unchanged_since,
+    }
+    return True, value
 
 
 def _serve_every_run_last(name: str, collector: Any) -> tuple[bool, Any]:
@@ -15402,6 +15473,13 @@ def _cached_section_value(
         # minutes on 2026-09-09 with no record of where the other minutes
         # went.  A section without a lifetime is not a section without a
         # price.
+        state_key = None
+        if paged and name in EVERY_RUN_STATE_KEYS:
+            state_key = EVERY_RUN_STATE_KEYS[name](*args)
+            if state_key is not None:
+                served, value = _every_run_unchanged(name, collector, state_key)
+                if served:
+                    return value
         if paged and _paged_past_deadline():
             served, value = _serve_every_run_last(name, collector)
             if served:
@@ -15457,7 +15535,7 @@ def _cached_section_value(
         # kept, not only the every-run sections': the read-only page render
         # has nothing else to draw it from.
         if paged:
-            _save_every_run_last(name, collector, value)
+            _save_every_run_last(name, collector, value, state_key=state_key)
         return value
     fingerprint = _section_fingerprint(collector, _salt)
     # The code alone, without the declared inputs: what decides whether an
