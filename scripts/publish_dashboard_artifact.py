@@ -40,13 +40,16 @@ DEFAULT_IN = ROOT / "tmp" / "cal_dashboard.html"
 DEFAULT_OUT = ROOT / "tmp" / "cal_dashboard_artifact.html"
 
 # What the publisher's own skeleton provides and this file must not repeat.
+# The tag name must end the token (whitespace or ``>``): a bare ``<head[^>]*>``
+# also matched inside the page's script -- ``ri+dr<headRows.length) ...`` up to
+# the next ``>`` -- and the published board died on a SyntaxError.
 _WRAPPER = (
     re.compile(r"<!doctype html>\s*", re.IGNORECASE),
-    re.compile(r"<html[^>]*>\s*", re.IGNORECASE),
+    re.compile(r"<html(?:\s[^>]*)?>\s*", re.IGNORECASE),
     re.compile(r"</html>\s*", re.IGNORECASE),
-    re.compile(r"<head[^>]*>\s*", re.IGNORECASE),
+    re.compile(r"<head(?:\s[^>]*)?>\s*", re.IGNORECASE),
     re.compile(r"</head>\s*", re.IGNORECASE),
-    re.compile(r"<body[^>]*>\s*", re.IGNORECASE),
+    re.compile(r"<body(?:\s[^>]*)?>\s*", re.IGNORECASE),
     re.compile(r"</body>\s*", re.IGNORECASE),
 )
 
