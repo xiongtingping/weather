@@ -19907,6 +19907,19 @@ class TargetProductionWorker:
             }
         return result
 
+    def _serve_delta_v2_settlement(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """The settlement lane's turn: run it when admitted, else defer it."""
+
+        if not self._maintenance_admits("delta_v2_settlement"):
+            deferred = self._maintenance_deferred("delta_v2_settlement")
+            return deferred, self._maintenance_deferred("delta_v2_settlement")
+        started = time.perf_counter()
+        truth, labels = self._run_delta_v2_settlement_maintenance(as_of_utc=utc_now())
+        self._record_maintenance_served(
+            "delta_v2_settlement", time.perf_counter() - started,
+        )
+        return truth, labels
+
     def _run_delta_v2_settlement_maintenance(
         self,
         *,
@@ -21439,7 +21452,15 @@ class TargetProductionWorker:
             if not self._strategy_on:
                 # Live off: probability and the market evidence the board and the
                 # readings use are done; post-fill recompute, the committed-scope
-                # sweep, the decision loop and the settlement lane are strategy.
+                # sweep and the decision loop are strategy.  The settlement lane
+                # is not (user 2026-11-03 「照常跑」): closed-day truth and the
+                # training labels are maintenance, placed no order and read no
+                # book -- skipped here from 11-02 06:25Z, no label was written
+                # for a day and the truth link's backlog grew to 41 station-days.
+                (
+                    live_off_truth_ingress,
+                    live_off_label_ingress,
+                ) = self._serve_delta_v2_settlement()
                 return {
                     "schema": SCHEMA,
                     "ok": True,
@@ -21462,6 +21483,9 @@ class TargetProductionWorker:
                     "resident_probability_chain": resident_probability_chain,
                     "regime_ingress": regime_ingress,
                     "truth_materialization": truth_materialization,
+                    "maintenance_lane": self._maintenance_lane_report(),
+                    "delta_v2_truth_ingress": live_off_truth_ingress,
+                    "delta_v2_label_ingress": live_off_label_ingress,
                     "strategy_stages": "skipped_live_off",
                     "worker_checked_at": now,
                 }
@@ -22098,25 +22122,10 @@ class TargetProductionWorker:
             # WS generation stale before DeltaBasketScore compiled.  Keep the
             # settlement lane independent and non-blocking after every current
             # scope has completed its current-stage -> JIT WS -> decision path.
-            if self._maintenance_admits("delta_v2_settlement"):
-                _settlement_started = time.perf_counter()
-                (
-                    delta_v2_truth_ingress,
-                    delta_v2_label_ingress,
-                ) = self._run_delta_v2_settlement_maintenance(
-                    as_of_utc=utc_now(),
-                )
-                self._record_maintenance_served(
-                    "delta_v2_settlement",
-                    time.perf_counter() - _settlement_started,
-                )
-            else:
-                delta_v2_truth_ingress = self._maintenance_deferred(
-                    "delta_v2_settlement"
-                )
-                delta_v2_label_ingress = self._maintenance_deferred(
-                    "delta_v2_settlement"
-                )
+            (
+                delta_v2_truth_ingress,
+                delta_v2_label_ingress,
+            ) = self._serve_delta_v2_settlement()
             try:
                 cash_phase_forward_observations = (
                     self._flush_cash_phase_forward_observations()
@@ -22337,25 +22346,10 @@ class TargetProductionWorker:
                 delta_v2_truth_ingress is None
                 and delta_v2_label_ingress is None
             ):
-                if self._maintenance_admits("delta_v2_settlement"):
-                    _settlement_started = time.perf_counter()
-                    (
-                        delta_v2_truth_ingress,
-                        delta_v2_label_ingress,
-                    ) = self._run_delta_v2_settlement_maintenance(
-                        as_of_utc=utc_now(),
-                    )
-                    self._record_maintenance_served(
-                        "delta_v2_settlement",
-                        time.perf_counter() - _settlement_started,
-                    )
-                else:
-                    delta_v2_truth_ingress = self._maintenance_deferred(
-                        "delta_v2_settlement"
-                    )
-                    delta_v2_label_ingress = self._maintenance_deferred(
-                        "delta_v2_settlement"
-                    )
+                (
+                    delta_v2_truth_ingress,
+                    delta_v2_label_ingress,
+                ) = self._serve_delta_v2_settlement()
             try:
                 cash_phase_forward_observations = (
                     self._flush_cash_phase_forward_observations()

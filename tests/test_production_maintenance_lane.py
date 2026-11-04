@@ -172,7 +172,11 @@ def test_every_named_stage_is_actually_gated_in_the_cycle() -> None:
     # whitespace collapsed rather than writing the assertion to match one
     # particular line break.
     source = " ".join(
-        inspect.getsource(TargetProductionWorker._run_stages).split()
+        (
+            inspect.getsource(TargetProductionWorker._run_stages)
+            # The settlement lane's gate lives in its own turn.
+            + inspect.getsource(TargetProductionWorker._serve_delta_v2_settlement)
+        ).split()
     )
     for stage in MAINTENANCE_STAGES:
         assert f'self._maintenance_admits("{stage}")' in source, stage

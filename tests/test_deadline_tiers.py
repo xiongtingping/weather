@@ -39,7 +39,10 @@ from bayes_basket_target.production_worker import (
     split_refusals_by_capability,
 )
 
-SOURCE = inspect.getsource(TargetProductionWorker._run_stages)
+# The settlement lane's gate lives in its own turn, called from the cycle.
+SOURCE = inspect.getsource(TargetProductionWorker._run_stages) + inspect.getsource(
+    TargetProductionWorker._serve_delta_v2_settlement
+)
 MARKED = set(re.findall(r'self\._mark\("([a-z0-9_]+)"\)', SOURCE)) | set(
     re.findall(
         r'self\._mark\("([a-z0-9_]+)"\)',

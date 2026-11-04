@@ -69,3 +69,13 @@ def test_live_off_skips_the_plans_and_ends_after_the_market_evidence() -> None:
         "live_cycle_settle", "cash_phase_forward_observations",
     }
     assert all(r["places_orders"] is False and r["state"] == "skipped_live_off" for r in receipts.values())
+
+
+def test_live_off_still_serves_the_settlement_lane() -> None:
+    # User 2026-11-03 「照常跑」: closed-day truth and training labels are
+    # maintenance, served before the live-off return like any other cycle.
+    live_off = STAGES.index('"state": "probability_only_live_off"')
+    served = STAGES.index("self._serve_delta_v2_settlement()")
+    assert served < live_off
+    assert STAGES.rindex("if not self._strategy_on:", 0, served) > STAGES.index('self._mark("market_ingress")')
+    assert '"delta_v2_label_ingress": live_off_label_ingress' in STAGES
