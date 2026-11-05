@@ -111,14 +111,21 @@ def cut_payload(page: str) -> str:
     return page[:start] + json.dumps(kept, ensure_ascii=False) + page[end:]
 
 
-def build(source: Path, out: Path, stations: list[str] | None, page_only: bool = False) -> dict:
-    page = artifact.convert(source.read_text(encoding="utf-8"))
+def board_page(source_html: str, shim: str) -> str:
+    """The rendered dashboard cut to the station board, with ``shim`` answering
+    its calls to the local control service.  The snapshot site and the live
+    gateway (``station_board_web.py``) differ only in that shim."""
+
+    page = artifact.convert(source_html)
     page = cut_payload(page)
     page = page.replace("<title>系统健康看板</title>", "<title>站点看板</title>", 1)
-    built = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
-    head = SITE_CSS + SITE_SHIM % {"built": json.dumps(built)}
     title_end = page.index("</title>") + len("</title>")
-    page = page[:title_end] + "\n" + head + page[title_end:]
+    return page[:title_end] + "\n" + SITE_CSS + shim + page[title_end:]
+
+
+def build(source: Path, out: Path, stations: list[str] | None, page_only: bool = False) -> dict:
+    built = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+    page = board_page(source.read_text(encoding="utf-8"), SITE_SHIM % {"built": json.dumps(built)})
     out.mkdir(parents=True, exist_ok=True)
     (out / "index.html").write_text(page, encoding="utf-8")
     page_mb = round(len(page.encode("utf-8")) / 1_048_576, 2)

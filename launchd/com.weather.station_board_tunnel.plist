@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/xiong</string>
+		<key>LOGNAME</key>
+		<string>xiong</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>USER</key>
+		<string>xiong</string>
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>com.weather.station_board_tunnel</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/ngrok</string>
+		<string>http</string>
+		<string>http://127.0.0.1:8794</string>
+		<string>--url=https://unmanageable-bindingly-helene.ngrok-free.dev</string>
+		<string>--log</string>
+		<string>stdout</string>
+		<string>--log-format</string>
+		<string>logfmt</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/xiong/Library/Logs/station_board_tunnel.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/xiong/Library/Logs/station_board_tunnel.log</string>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+	<key>WorkingDirectory</key>
+	<string>/Users/xiong</string>
+</dict>
+</plist>
