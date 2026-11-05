@@ -66,6 +66,13 @@ FOLD_COLUMN = "buckets_json"
 #: of its own and not one to bundle into a rebuild.
 DEDUPE_TABLE = "basket_p0_preselection_plan"
 DEDUPE_COLUMN = "plan_json"
+#: Charter 284 (2026-11-05, user 「SSOT 开 auto_vacuum，整库重建压缩。」): the
+#: rebuilt store is INCREMENTAL, so the pages the cold offload frees go back
+#: to the SSD (it runs ``incremental_vacuum`` after each batch) instead of
+#: sitting on the freelist until the next rebuild.  Not FULL: that would
+#: relocate pages inside every production commit that frees one.
+AUTO_VACUUM = "INCREMENTAL"
+AUTO_VACUUM_CODE = 2
 #: Rows per transaction on the target.  Large enough that the commit cost
 #: disappears, small enough that the target's WAL never holds a whole table.
 BATCH = 2000
@@ -624,6 +631,8 @@ def build(
         out = sqlite3.connect(str(target), timeout=300.0)
         try:
             out.execute(f"PRAGMA page_size={page_size}")
+            # Charter 284: settable only before the first table exists.
+            out.execute(f"PRAGMA auto_vacuum={AUTO_VACUUM}")
             # Tables first, WITHOUT their indexes or triggers.  An index built
             # row by row is both slower and looser than one built once at the
             # end, and a trigger that fires during the copy would rewrite the
@@ -894,6 +903,7 @@ def verify(
         receipt["integrity_check"] = "ok" if not bad_integrity else bad_integrity
         receipt["integrity_tables"] = len(integrity)
         receipt["foreign_key_check"] = len(dst.execute("PRAGMA foreign_key_check").fetchall())
+        receipt["auto_vacuum"] = int(dst.execute("PRAGMA auto_vacuum").fetchone()[0])
 
         want = expected or {}
         dst_objs = _objects(dst)
@@ -947,6 +957,7 @@ def verify(
             not bad_integrity
             and len(integrity) == len(tables)
             and receipt["foreign_key_check"] == 0
+            and receipt["auto_vacuum"] == AUTO_VACUUM_CODE
             and receipt["objects_match"]
             and receipt["row_counts_match"]
             and receipt["sequence_match"]

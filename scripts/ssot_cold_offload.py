@@ -2647,6 +2647,18 @@ def _delete_connection(db: Path) -> sqlite3.Connection:
     return conn
 
 
+def _return_free_pages(conn: sqlite3.Connection) -> None:
+    """Hand the pages a batch just freed back to the SSD (charter 284).
+
+    The store is rebuilt with ``auto_vacuum=INCREMENTAL``; without this the
+    freed pages only sit on the freelist and the file never shrinks.  A store
+    not (yet) rebuilt that way is left alone: there the pragma is a no-op.
+    """
+
+    if int(conn.execute("PRAGMA auto_vacuum").fetchone()[0]) == 2:
+        conn.execute("PRAGMA incremental_vacuum").fetchall()
+
+
 def _append_manifest(path: Path, row: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -2899,6 +2911,7 @@ def move_table(
                 delete.execute("ROLLBACK")
                 return "ssot_delete_count_mismatch"
             delete.execute("COMMIT")
+            _return_free_pages(delete)
         except BaseException:
             if delete.in_transaction:
                 delete.execute("ROLLBACK")
